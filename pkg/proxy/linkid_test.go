@@ -7,7 +7,7 @@ import (
 
 // p.linkID is derived once, in NewProxy (parseVKLinkID, the pool's own parser), and never written afterwards:
 // Start runs on the bootstrap goroutine while RefreshCaptchaURL reads the
-// field on Swift's thread with nothing ordering the two (the review of
+// field concurrently with nothing ordering the two (the review of
 // 2026-09-06). Sabotage seen red: the derivation moved back into Start (the
 // field is "" before Start).
 func TestLinkIDIsFixedAtConstruction(t *testing.T) {

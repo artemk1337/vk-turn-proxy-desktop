@@ -440,8 +440,7 @@ type Proxy struct {
 	firstPingAt []atomic.Int64
 	firstPongAt []atomic.Int64
 
-	// Active-probe-on-wake plumbing. WakeHealthCheck() (called from the
-	// Swift extension's wake() override via wgWakeHealthCheck) closes
+	// Active-probe-on-wake plumbing. WakeHealthCheck() closes
 	// wakeCh to broadcast to every per-conn probe goroutine; each one
 	// then sends an extra ping out-of-schedule and waits up to 5s for
 	// the echo, killing the conn immediately if no echo arrives. This
@@ -1303,9 +1302,8 @@ func (p *Proxy) ForceReconnect() {
 	go p.startConnections()
 }
 
-// WakeHealthCheck is called from Swift wake() whenever iOS resumes the
-// Network Extension. Its job is to clear stale state that accumulated
-// during the iOS freeze: pion's permission-refresh and channel-bind
+// WakeHealthCheck handles a process resume notification. It clears stale
+// state accumulated during suspension: pion's permission-refresh and channel-bind
 // transactions issued just before freeze receive late responses on wake
 // (so pion treats them as failed), and TURN-server permissions that
 // expired during multi-minute freezes get 400 Bad Request on the first
@@ -1520,8 +1518,8 @@ func (p *Proxy) runWatchdog() {
 				// on the first post-wake refresh attempt. Reset both
 				// counters so Condition 2 only fires on errors that
 				// persist beyond 90s after this freeze ended. Defense
-				// in depth — WakeHealthCheck does the same on the
-				// Swift wake() callback path.
+				// in depth — WakeHealthCheck also clears these counters
+				// when the client explicitly reports a resume event.
 				if cleared := p.pionTransientErrors.Swap(0); cleared > 0 {
 					log.Printf("proxy: watchdog cleared %d accumulated pion errors", cleared)
 				}
@@ -2255,19 +2253,9 @@ func (p *Proxy) directMode() bool {
 // conn dials its own cred's Addresses[0], so the pool naturally spreads
 // across whatever relays VK hands out per fetch.
 //
-// CORRECTION 2026-06-08: the previous version of this comment claimed conns
-// on a relay != Swift's serverAddress get "recursive-routed back through the
-// tunnel → ~0.5 Mbps". That is EMPIRICALLY FALSE (08.06.2026/vpn.change.
-// address.log): with serverAddress = relay B, ~10 conns ran on relay A (the
-// NON-serverAddress relay) and carried FULL speed both idle and under a
-// speedtest (~86 KB/s TX/conn, 8.7 MB cum), all on the physical interface
-// (local=192.168.4.21). The extension's own TURN sockets never traverse its
-// own tunnel regardless of destination, so a conn's relay need not match
-// serverAddress — there is no recursion. (The old "155→90 → 0.5 Mbps"
-// anecdote was almost certainly the old relay being DEAD, not recursion.) We
-// still don't actively rotate — no demonstrated throughput win — but a
-// relay/serverAddress mismatch is harmless. See
-// evaluated_alternatives_turn_endpoint_rotation.md.
+// Each connection uses its credential's relay. The client must keep every
+// relay destination reachable through the physical gateway, independently of
+// the tunnel endpoint configured in WireGuard.
 //
 // The fourth result is the hand-out's stamp — the session's GENERATION, what
 // its replacement sentinel declares (sendGroupHello, tickPing): THIS hand-out's,
@@ -3980,34 +3968,13 @@ func (p *Proxy) dumpConnStats(prevTx, prevRx []int64, prevTime time.Time, label 
 		p.pongRepeats.Load())
 }
 
-// TaskVMInfo carries the iOS-side process memory accounting fields
-// pulled from Mach task_info(TASK_VM_INFO_DATA). All values in bytes.
+// TaskVMInfo carries Darwin process memory accounting from
+// Mach task_info(TASK_VM_INFO_DATA). All values are in bytes.
 //
-// Field semantics:
-//   - PhysFootprint: what iOS jetsam evaluates against the NE per-process
-//     memory budget (~50 MB hard cap). The headline number — same as
-//     the old `PhysFootprintFn` returned.
-//   - Internal: private/anonymous resident pages — Go heap, Swift heap,
-//     kernel mbufs attributed to the process. Growth here without a
-//     corresponding Go `sys` rise points at non-Go allocation
-//     (Swift host code, CFNetwork, NEPacketTunnelProvider framework,
-//     mbuf clusters for in-flight TUN traffic).
-//   - External: file-backed mappings — binary text, frameworks, dyld.
-//     Should be roughly stable; sharp changes hint framework
-//     load/unload (rare in a long-running NE).
-//   - Reusable: pages marked MADV_FREE'd (kernel can reclaim them
-//     without IO). Go's `heap-released` should be a subset
-//     (Go releases idle heap this way). If Reusable >> heap-released,
-//     something else is also freeing pages.
-//   - Compressed: kernel-compressed (swapped) pages. Growth here means
-//     system-wide pressure pushed our pages out of physical RAM into
-//     compressed swap. Often a sign other apps are crowding us.
-//
-// Added 2026-05-26 (build 138) for finer-grained jetsam attribution
-// after we observed phys_footprint silently growing ~28 MB in <50s
-// during pure idleness (2026-05-26 16:26:45 kill) with no visible
-// log activity — the standard memstats line couldn't tell us whether
-// the growth was Go-side or non-Go.
+// PhysFootprint is the process's physical memory footprint. Internal counts
+// private resident pages, External counts file-backed mappings, Reusable
+// counts reclaimable pages, and Compressed counts kernel-compressed pages.
+// Growth in Internal without growth in Go's Sys can indicate native allocation.
 type TaskVMInfo struct {
 	PhysFootprint uint64
 	Internal      uint64
@@ -4016,32 +3983,15 @@ type TaskVMInfo struct {
 	Compressed    uint64
 }
 
-// TaskVMInfoFn, if set by the embedding application, returns the
-// current process's task_vm_info breakdown. On iOS this is wired up
-// via the C bridge calling task_info(TASK_VM_INFO_DATA). Single call
-// per sample so all fields come from the same atomic kernel snapshot.
-//
-// PhysFootprint is the SAME number iOS jetsam evaluates against the
-// NE per-process memory budget. runtime.MemStats.Sys reports only
-// Go-side allocation — on Darwin it overstates the resident footprint
-// because madvise(MADV_FREE_REUSABLE) marks pages reclaimable but
-// doesn't immediately reduce RSS, so Sys stays at a high-water mark.
-// PhysFootprint cuts through that ambiguity, and the Internal/External/
-// Reusable/Compressed breakdown distinguishes Go from non-Go drivers.
-//
-// Set to nil = unavailable, in which case the memstats logger writes
-// "rss=n/a" and omits the breakdown fields. No global lock — set
-// once at startup before the loop runs.
+// TaskVMInfoFn optionally supplies a consistent process memory snapshot.
+// Set it once before the logging loop starts. A nil function leaves Darwin
+// memory accounting unavailable, so logs show rss=n/a and omit its breakdown.
+// Go's Sys may overstate the resident footprint on Darwin because reusable
+// pages remain mapped until the kernel reclaims them.
 var TaskVMInfoFn func() TaskVMInfo
 
-// logMemStatsLoop ticks every 10s (was 60s pre-build-138 — bumped for
-// finer-grained jetsam-spike attribution after observing phys_footprint
-// silently growing 22→50 MB in <50s on 2026-05-26 16:26:45 between
-// two 60s samples, leaving us blind to the spike shape) and emits
-// one runtime.MemStats + task_vm_info line per tick. Diagnostic for
-// the "silent extension kill" failure mode where iOS jetsam terminates
-// the NetworkExtension without warning when the process approaches
-// the ~50 MB hard per-process memory budget.
+// logMemStatsLoop emits Go runtime memory statistics and optional process
+// memory accounting every ten seconds.
 //
 // Output format (one line per tick):
 //
@@ -4054,13 +4004,12 @@ var TaskVMInfoFn func() TaskVMInfo
 // What to look for:
 //
 // Process-level (from Mach task_vm_info, full-process accounting):
-//   - rss:            phys_footprint via Mach task_info — what iOS
-//     jetsam actually evaluates. The headline number;
+//   - rss:            phys_footprint via Mach task_info;
 //     "n/a" if TaskVMInfoFn isn't wired up.
 //   - vm-internal:    private/anonymous resident pages — Go heap +
-//     Swift heap + kernel mbufs + framework state.
+//     native heap + kernel mbufs + framework state.
 //     Growth here without Go `sys` rising points at
-//     non-Go allocation (CFNetwork, mbufs, Swift host).
+//     non-Go allocation (native libraries, mbufs, host process).
 //   - vm-external:    file-backed mappings — binary, frameworks, dyld.
 //     Should be roughly stable; sharp changes hint
 //     framework load/unload.
@@ -4098,7 +4047,7 @@ var TaskVMInfoFn func() TaskVMInfo
 //     heap-alloc, heap-objects, stack for the source.
 //   - rss rising + sys flat → non-Go allocation. Check vm-internal
 //     delta (probably the same magnitude as rss delta). If so, it's
-//     Swift / framework / mbuf accumulation we can't see from Go.
+//     native / framework / mbuf accumulation we can't see from Go.
 //   - vm-compressed rising → system memory pressure, not our fault.
 //     Check for unrelated jetsam events in sysdiagnose PowerLog.
 //

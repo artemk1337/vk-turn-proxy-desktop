@@ -188,8 +188,8 @@ var closedWakeCh = func() chan struct{} {
 // goroutine parked in its select, and no other. A goroutine in its tick branch
 // at that instant re-read the channel after the swap and never saw the wake —
 // and at a thaw the overdue tick fires on EVERY connection at once (with a
-// line to log when the gap is long), while Swift's wake() is still on its way
-// to WakeHealthCheck: on 2026-09-20 two wakes of twelve went unprobed on all
+// line to log when the gap is long), while a resume notification is still
+// on its way to WakeHealthCheck: two observed wakes went unprobed on all
 // thirty connections, and at one of them 27 connections dead at the server
 // stood for 2 min 15 s with the phone awake, until the periodic detector.
 // So the wake is a COUNTER as well — bumped under the lock before the swap —

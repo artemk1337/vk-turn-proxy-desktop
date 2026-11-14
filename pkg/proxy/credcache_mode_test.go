@@ -3,8 +3,8 @@ package proxy
 // The credential cache is the mode's it was minted in: an anonymous pool's
 // file is not loaded by a cookie pool, a cookie pool's not by an anonymous
 // one, and a file from before the field is an anonymous one. The console has
-// no state of its own to know the mode changed (the app clears the cache from
-// Swift): on 2026-09-30 forty connections ran on the previous run's anonymous
+// separate persisted mode state. In a previous failure, forty connections
+// ran on the previous run's anonymous
 // identities in cookie mode. Sabotage seen red: the mode not written; the mode
 // not compared at load; a file without a mode taken for the pool's own; the
 // mode read from the global flag at save time (the app turns cookie auth off
