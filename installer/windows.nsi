@@ -7,7 +7,7 @@ Unicode true
 !include "FileFunc.nsh"
 
 !ifndef VERSION
-  !error "Define VERSION, for example 0.3.0"
+  !error "Define VERSION, for example 1.0.1"
 !endif
 !ifndef ARCH
   !error "Define ARCH as amd64 or arm64"

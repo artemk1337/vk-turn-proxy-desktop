@@ -23,3 +23,17 @@ Journal network changes before applying them. Route VK and TURN traffic through 
 - Keep iOS project files, unrelated server tools and upstream workflow definitions out of this desktop repository. Preserve attribution and license notices when reusing code.
 
 - Verify Linux GTK under Xvfb, backend parent-exit cleanup, manual/profile setup and DEB installation/removal. Keep authentication data out of preferences and logs on both platforms.
+
+## Changelog format
+
+- Start each version with `## vX.Y.Z - YYYY-MM-DD`. Mark the initial release as "Первый релиз".
+- Group entries under `Feature` and `Bugfix`. Use `Improvement` or `Breaking change` only when relevant. Omit empty groups.
+- Each entry names the change and briefly describes the user-visible result. Keep one change per entry. Avoid implementation history, build/test details and generic phrases such as "various improvements".
+- Use the same concise groups in GitHub release notes.
+
+```markdown
+- Feature
+  - Feature name - short description.
+- Bugfix
+  - Fixed issue - resulting behavior.
+```

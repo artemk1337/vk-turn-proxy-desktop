@@ -1,17 +1,10 @@
 # Changelog
 
-## v0.5.0 - 2026-11-14
+## v1.0.1 - 2026-11-14
 
-- Add Linux GUI and terminal packages for x64 and ARM64.
-- Add Linux desktop integration, connection controls and protected backend lifecycle.
+Первый релиз.
 
-## v0.4.1 - 2026-11-14
-
-- Move the desktop client into its own repository.
-- Remove unused platform projects, tools and workflows.
-- Clean up profile instructions, interface labels and obsolete source comments.
-
-## v0.4.0 - 2026-11-14
-
-- Import VK cookies from a file or pasted text.
-- Sign in through the VK website in an isolated browser window.
+- **Feature**
+  - Windows и Linux - графический и терминальный клиенты.
+  - Подключение по ссылке профиля или WireGuard-конфигу, вход в VK.
+  - Установщики и переносимые версии для x64 и ARM64.

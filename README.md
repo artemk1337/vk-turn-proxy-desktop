@@ -20,7 +20,7 @@ Approve the administrator prompt to manage the VPN tunnel.
 Install the `.deb` on Debian or Ubuntu and open **VK TURN Proxy** from the applications menu
 
 ```sh
-sudo apt install ./vk-turn-proxy-linux-v0.5.0-amd64.deb
+sudo apt install ./vk-turn-proxy-linux-v1.0.1-amd64.deb
 ```
 
 For portable use, extract the `.tar.gz` and run `./vk-turn-proxy-desktop`. It requires Python 3, GTK 3, PyGObject, iproute2 and polkit. The app requests administrator access when connecting.
@@ -56,8 +56,8 @@ For the portable package, use `sudo ./vk-turn-proxy-console -wizard`. Follow the
 ## Build
 
 ```sh
-docker build --build-arg VERSION=v0.5.0 --output dist/windows -f Dockerfile.windows .
-docker build --build-arg VERSION=v0.5.0 --output dist/linux -f Dockerfile.linux .
+docker build --build-arg VERSION=v1.0.1 --output dist/windows -f Dockerfile.windows .
+docker build --build-arg VERSION=v1.0.1 --output dist/linux -f Dockerfile.linux .
 ```
 
 Produces Windows ZIPs/installers and Linux archives/DEB packages for x64 and ARM64, with checksums.
