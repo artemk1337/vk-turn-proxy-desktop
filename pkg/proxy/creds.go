@@ -1419,9 +1419,7 @@ func leaseKeyOf(slot int, creds *TURNCreds) leaseKey {
 //     two transitions saturate 6 slots, leaving 6 fresh — survives.
 //
 // Why this works: VK's per-cred 486 quota is bound to allocation
-// LIFETIME (server-side ~600s timer), not client actions — verified
-// empirically 2026-05-10 with build 69's wgForceReconnect debug button
-// (see evaluated_alternatives_pre_emptive_refresh.md). The only way
+// LIFETIME (server-side ~600s timer), not client actions. The only way
 // to keep throughput during a path-cascade is to have enough fresh,
 // never-used slots that VK has no allocations against.
 //
