@@ -53,8 +53,8 @@ func (a *application) settingsTab() TabPage {
 					ComboBox{AssignTo: &a.languageChoice, Model: []string{"English", "Русский"}, CurrentIndex: 0, MinSize: Size{Width: 220}},
 				}},
 				Composite{MinSize: Size{Width: 220}, MaxSize: Size{Width: 240}, Layout: VBox{MarginsZero: true, Alignment: AlignHNearVNear, Spacing: 7}, Children: []Widget{
-					Label{Text: "Appearance", Font: Font{Family: "Segoe UI", PointSize: 10, Bold: true}, TextColor: headingText},
-					ComboBox{AssignTo: &a.themeChoice, Model: []string{"Light", "Dark gray"}, CurrentIndex: 0, MinSize: Size{Width: 220}},
+					Label{Text: "Log limit", Font: Font{Family: "Segoe UI", PointSize: 10, Bold: true}, TextColor: headingText},
+					NumberEdit{AssignTo: &a.logLimitChoice, Value: float64(a.preferences.LogLines), MinValue: 100, MaxValue: 10000, Decimals: 0, Increment: 100, MinSize: Size{Width: 180}},
 				}},
 				HSpacer{},
 			}},
@@ -62,10 +62,6 @@ func (a *application) settingsTab() TabPage {
 			Composite{Layout: VBox{MarginsZero: true, Alignment: AlignHNearVNear, Spacing: 6}, Children: []Widget{
 				Composite{Layout: HBox{MarginsZero: true, Alignment: AlignHNearVCenter, SpacingZero: true}, Children: []Widget{
 					CheckBox{AssignTo: &a.startupChoice, Alignment: AlignHNearVCenter, Text: "Start with Windows", Checked: a.preferences.AutoStart},
-					HSpacer{},
-				}},
-				Composite{Layout: HBox{Margins: Margins{Left: 22}, Alignment: AlignHNearVCenter, SpacingZero: true}, Children: []Widget{
-					Label{Text: "Startup opens the app. Connect when you are ready.", TextColor: mutedText, Font: Font{Family: "Segoe UI", PointSize: 9}},
 					HSpacer{},
 				}},
 			}},
@@ -95,16 +91,10 @@ func (a *application) initializePreferences() {
 		a.applyLanguage()
 		a.savePreferences()
 	})
-	a.themeChoice.CurrentIndexChanged().Attach(func() {
-		if a.updatingPreferences {
-			return
+	a.logLimitChoice.ValueChanged().Attach(func() {
+		if !a.updatingPreferences {
+			a.setLogLimit(int(a.logLimitChoice.Value()))
 		}
-		a.preferences.Theme = "light"
-		if a.themeChoice.CurrentIndex() == 1 {
-			a.preferences.Theme = "dark"
-		}
-		a.applyTheme()
-		a.savePreferences()
 	})
 	a.startupChoice.CheckedChanged().Attach(a.changeAutostart)
 	if a.preferencesError != nil {
@@ -147,4 +137,23 @@ func (a *application) changeAutostart() {
 			a.savePreferences()
 		})
 	}()
+}
+
+func (a *application) toggleTheme() {
+	if a.preferences.Theme == "dark" {
+		a.preferences.Theme = "light"
+	} else {
+		a.preferences.Theme = "dark"
+	}
+	a.applyTheme()
+	a.updateThemeToggle()
+	a.savePreferences()
+}
+func (a *application) updateThemeToggle() {
+	text, hint := "☾", "Dark gray"
+	if a.preferences.Theme == "dark" {
+		text, hint = "☀", "Light"
+	}
+	a.themeToggle.SetText(text)
+	a.themeToggle.SetToolTipText(a.tr(hint))
 }

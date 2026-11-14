@@ -67,7 +67,7 @@ try {
             [WindowCapture]::EnumChildWindows($client.MainWindowHandle, $callback, [IntPtr]::Zero) | Out-Null
             if ($script:tabHandle -eq [IntPtr]::Zero) { throw 'Setup tabs were not found' }
             $count = [WindowCapture]::SendMessage($script:tabHandle, 0x1304, [IntPtr]::Zero, [IntPtr]::Zero).ToInt32()
-            if ($count -lt 5) { throw 'Setup tabs are missing' }
+            if ($count -ne 3) { throw 'Expected Connection, Log and Settings tabs' }
             for ($i = 0; $i -lt $count; $i++) {
                 [WindowCapture]::SendMessage($script:tabHandle, 0x1330, [IntPtr]$i, [IntPtr]::Zero) | Out-Null
                 Start-Sleep -Milliseconds 250

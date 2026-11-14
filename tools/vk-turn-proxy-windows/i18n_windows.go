@@ -5,6 +5,7 @@ package main
 import "github.com/lxn/walk"
 
 var russianText = map[string]string{
+	"Ready":                                "Готово",
 	"Paste a link or open a JSON profile.": "Вставьте ссылку или откройте JSON-профиль.",
 	"Show":                                 "Открыть", "Exit": "Выход",
 	"Profiles (*.json;*.txt)|*.json;*.txt|All files (*.*)|*.*": "Профили (*.json;*.txt)|*.json;*.txt|Все файлы (*.*)|*.*",
@@ -63,6 +64,11 @@ type textBinding struct {
 	control textControl
 	source  string
 }
+type tooltipBinding struct {
+	control walk.Widget
+	source  string
+}
+
 type cueBinding struct {
 	control *walk.LineEdit
 	source  string
@@ -72,9 +78,12 @@ func (a *application) collectText(container walk.Container) {
 	children := container.Children()
 	for i := 0; i < children.Len(); i++ {
 		child := children.At(i)
+		if hint := child.ToolTipText(); hint != "" {
+			a.tooltipBindings = append(a.tooltipBindings, tooltipBinding{child, hint})
+		}
 		if control, ok := child.(textControl); ok {
 			switch child {
-			case a.status, a.modeLabel, a.phaseLabel, a.profile, a.wgConfig, a.log, a.vkLink, a.endpoint, a.server, a.cookies, a.cookieText, a.languageChoice, a.themeChoice, a.transport:
+			case a.status, a.modeLabel, a.phaseLabel, a.log, a.languageChoice, a.profileChoice, a.authStatus, a.authButton, a.themeToggle, a.logLimitChoice:
 			default:
 				if text := control.Text(); text != "" {
 					a.textBindings = append(a.textBindings, textBinding{control, text})
@@ -101,39 +110,46 @@ func (a *application) applyLanguage() {
 	for _, binding := range a.textBindings {
 		binding.control.SetText(a.tr(binding.source))
 	}
+	for _, binding := range a.tooltipBindings {
+		binding.control.SetToolTipText(a.tr(binding.source))
+	}
 	for _, binding := range a.cueBindings {
 		binding.control.SetCueBanner(a.tr(binding.source))
 	}
-	titles := []string{"Profile link", "WireGuard config", "Advanced", "Log", "Settings"}
+	titles := []string{"Connection", "Log", "Settings"}
 	for i, title := range titles {
 		a.tabs.Pages().At(i).SetTitle(a.tr(title))
-	}
-	selected := a.transport.CurrentIndex()
-	a.transport.SetModel([]string{a.tr("Native SRTP"), a.tr("Legacy DTLS")})
-	a.transport.SetCurrentIndex(selected)
-	a.themeChoice.SetModel([]string{a.tr("Light"), a.tr("Dark gray")})
-	if a.preferences.Theme == "dark" {
-		a.themeChoice.SetCurrentIndex(1)
-	} else {
-		a.themeChoice.SetCurrentIndex(0)
 	}
 	if a.preferences.Language == "ru" {
 		a.languageChoice.SetCurrentIndex(1)
 	} else {
 		a.languageChoice.SetCurrentIndex(0)
 	}
-	a.wgConfig.SetToolTipText(a.tr("Full-tunnel .conf with one peer."))
-	a.server.SetToolTipText(a.tr("Choose a server by name from a multi-server JSON profile."))
-	a.endpoint.SetToolTipText(a.tr("VK TURN listener, usually port 56000. Leave empty to use Endpoint from the config."))
+	a.updateVKStatus()
+	a.updateThemeToggle()
 	a.updateModeLabel()
 	a.updateConnectionState()
 	a.tabs.Invalidate()
 }
 
 func (a *application) updateModeLabel() {
-	text := "Using profile link"
-	if a.inputMode == 1 {
-		text = "Using WireGuard config"
+	text := "Add a profile"
+	if profile, ok := a.selectedProfile(); ok {
+		text = "Using profile link"
+		if profile.Mode == "wireguard" {
+			text = "Using WireGuard config"
+		}
 	}
 	a.modeLabel.SetText(a.tr(text))
+}
+
+func init() {
+	for source, translated := range map[string]string{
+		"Choose a profile link, or a WireGuard configuration with a VK call link.":       "Профиль по ссылке или конфигурация WireGuard со ссылкой на звонок VK.",
+		"One VK account is used for all profiles. The session is checked automatically.": "Один аккаунт VK для всех профилей. Сессия проверяется автоматически.",
+		"VK connected": "VK подключён", "VK session expired": "Сессия VK истекла", "VK check unavailable": "Проверка VK недоступна", "Checking VK…": "Проверяем VK…", "VK signed out": "Вход не выполнен", "Sign in again": "Войти снова",
+		"Connection": "Подключение", "Profile": "Профиль", "Add": "Добавить", "Edit": "Изменить", "Remove": "Удалить", "VK account": "Аккаунт VK", "Cookies…": "Cookies…", "Add a profile": "Добавьте профиль", "Add a profile first.": "Сначала добавьте профиль.", "Log limit": "Строк в журнале", "Save": "Сохранить", "Cancel": "Отмена", "Cookies": "Cookies", "Import file…": "Из файла…", "Clear session": "Выйти из VK",
+	} {
+		russianText[source] = translated
+	}
 }

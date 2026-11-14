@@ -96,14 +96,15 @@ func TestLogTrimmingPreservesRetainedHistory(t *testing.T) {
 	edit := newLogEdit(t)
 	var view logView
 	view.Reset(edit)
-	view.Append(edit, logTestLines(5600))
-	edit.SetTextSelection(60000, 60030)
+	view.SetLimit(edit, 300)
+	view.Append(edit, logTestLines(300))
+	edit.SetTextSelection(6000, 6030)
 	edit.SendMessage(win.WM_VSCROLL, win.SB_TOP, 0)
-	edit.SendMessage(win.EM_LINESCROLL, 0, 2000)
+	edit.SendMessage(win.EM_LINESCROLL, 0, 200)
 	beforeLine := int(edit.SendMessage(win.EM_GETFIRSTVISIBLELINE, 0, 0))
 	beforeChar := int(edit.SendMessage(win.EM_LINEINDEX, uintptr(beforeLine), 0))
 	incoming := logTestLines(100)
-	plan := planLogAppend(view.text, incoming)
+	plan := planLogAppend(view.text, incoming, view.limit)
 	removedChars := utf16Length(view.text[:plan.removed])
 	view.Append(edit, incoming)
 	afterLine := int(edit.SendMessage(win.EM_GETFIRSTVISIBLELINE, 0, 0))
@@ -112,7 +113,7 @@ func TestLogTrimmingPreservesRetainedHistory(t *testing.T) {
 		t.Fatalf("retained history anchor changed from %d to %d after removing %d", beforeChar, afterChar, removedChars)
 	}
 	start, end := edit.TextSelection()
-	if start != 60000-removedChars || end != 60030-removedChars {
+	if start != 6000-removedChars || end != 6030-removedChars {
 		t.Fatal("trim did not preserve selection in retained history")
 	}
 	if edit.Text() != view.text {
@@ -144,5 +145,19 @@ func TestShowingLogPreservesHistoryWithoutNewEntries(t *testing.T) {
 	view.FollowTail(edit)
 	if edit.SendMessage(win.EM_GETFIRSTVISIBLELINE, 0, 0) != before {
 		t.Fatal("reopening log discarded the reader's position")
+	}
+}
+
+func TestChangingLogLimitImmediatelyTrimsNativeView(t *testing.T) {
+	edit := newLogEdit(t)
+	var view logView
+	view.Reset(edit)
+	view.Append(edit, logTestLines(1500))
+	if strings.Count(view.text, "\n") != 1000 {
+		t.Fatal("default line limit not applied")
+	}
+	view.SetLimit(edit, 200)
+	if strings.Count(view.text, "\n") != 200 || edit.Text() != view.text {
+		t.Fatal("native log not trimmed on setting change")
 	}
 }

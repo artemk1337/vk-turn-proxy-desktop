@@ -6,7 +6,7 @@ COPY third_party ./third_party
 RUN go mod download
 COPY . .
 RUN go test -count=1 ./tools/vk-turn-proxy-console ./pkg/wireguard-profile ./pkg/proxy/srtpwrap ./pkg/turnbind
-ARG VERSION=v1.0.2
+ARG VERSION=v1.1.0
 RUN set -eu; for arch in amd64 arm64; do \
       mkdir -p "/tmp/bin/$arch"; \
       GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \

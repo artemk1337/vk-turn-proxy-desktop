@@ -3,7 +3,6 @@
 package main
 
 import (
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -34,6 +33,7 @@ func (a *application) updateConnectionState() {
 		color = a.palette.accent
 	case "connected":
 		status = "Connected"
+		phase = "Ready"
 		color = a.palette.success
 	case "disconnecting":
 		status = "Disconnecting…"
@@ -56,15 +56,9 @@ func (a *application) progressFromLog(line string) {
 	if !a.disconnect.Enabled() {
 		return
 	}
-	switch {
-	case strings.Contains(line, "DEFAULT ROUTE → the tunnel"):
-		a.setConnectionState("connected")
-	case strings.Contains(line, "proxy: first connection up"), strings.Contains(line, "tunnel:"):
-		a.setConnectionState("handshake")
-	case strings.Contains(line, "TURN relay allocated:"):
-		if a.connectionState == "credentials" {
-			a.setConnectionState("relay")
-		}
+	next := progressStateFromLog(a.connectionState, line)
+	if next != a.connectionState {
+		a.setConnectionState(next)
 	}
 }
 
@@ -103,26 +97,60 @@ func (a *application) animateProgress() {
 
 func (a *application) paintProgress(canvas *walk.Canvas, _ walk.Rectangle) error {
 	bounds := a.progress.ClientBoundsPixels()
-	track, _ := walk.NewSolidColorBrush(a.palette.border)
-	defer track.Dispose()
-	canvas.FillRoundedRectanglePixels(track, bounds, walk.Size{Width: 6, Height: 6})
-	if a.connectionState == "" || a.connectionState == "disconnected" || a.connectionState == "failed" {
-		return nil
+	scale := a.progress.IntFrom96DPI
+	gap := scale(8)
+	width := max(1, (bounds.Width-3*gap)/4)
+	stage := connectionStage(a.connectionState)
+	labels := []string{"API", "Relay", "WireGuard", "Ready"}
+	if a.preferences.Language == "ru" {
+		labels = []string{"API", "Ретранслятор", "WireGuard", "Готово"}
 	}
-	color := a.palette.accent
-	segment := bounds
-	if a.connectionState == "connected" {
-		color = a.palette.success
-	} else {
-		segment.Width = max(40, bounds.Width/4)
-		cycle := max(1, 2*(bounds.Width-segment.Width))
-		offset := (a.progressFrame * 9) % cycle
-		if offset > bounds.Width-segment.Width {
-			offset = cycle - offset
+	for index, label := range labels {
+		segment := walk.Rectangle{X: index * (width + gap), Y: scale(8), Width: width, Height: scale(6)}
+		color := a.palette.border
+		textColor := a.palette.muted
+		if index < stage || a.connectionState == "connected" {
+			color, textColor = a.palette.success, a.palette.success
+		} else if index == stage {
+			color, textColor = a.palette.accent, a.palette.accent
 		}
-		segment.X = offset
+		brush, err := walk.NewSolidColorBrush(color)
+		if err != nil {
+			return err
+		}
+		err = canvas.FillRoundedRectanglePixels(brush, segment, walk.Size{Width: scale(6), Height: scale(6)})
+		brush.Dispose()
+		if err != nil {
+			return err
+		}
+		if index == stage && a.connectionState != "connected" {
+			// A small moving highlight keeps the active stage readable while waiting.
+			highlight := segment
+			highlight.Width = max(scale(10), width/5)
+			travel := max(1, width-highlight.Width)
+			offset := (a.progressFrame * scale(2)) % (2 * travel)
+			if offset > travel {
+				offset = 2*travel - offset
+			}
+			highlight.X += offset
+			glow, err := walk.NewSolidColorBrush(progressHighlight(color))
+			if err != nil {
+				return err
+			}
+			err = canvas.FillRoundedRectanglePixels(glow, highlight, walk.Size{Width: scale(6), Height: scale(6)})
+			glow.Dispose()
+			if err != nil {
+				return err
+			}
+		}
+		textBounds := walk.Rectangle{X: segment.X, Y: scale(22), Width: width, Height: scale(24)}
+		if err := canvas.DrawTextPixels(label, a.progress.Font(), textColor, textBounds, walk.TextCenter|walk.TextVCenter|walk.TextSingleLine|walk.TextNoPrefix); err != nil {
+			return err
+		}
 	}
-	fill, _ := walk.NewSolidColorBrush(color)
-	defer fill.Dispose()
-	return canvas.FillRoundedRectanglePixels(fill, segment, walk.Size{Width: 6, Height: 6})
+	return nil
+}
+
+func progressHighlight(color walk.Color) walk.Color {
+	return walk.RGB(byte(uint32(color)&255)/2+127, byte((uint32(color)>>8)&255)/2+127, byte((uint32(color)>>16)&255)/2+127)
 }

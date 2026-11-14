@@ -23,8 +23,8 @@ func TestCompactLayoutPreservesSettingsAlignmentAndFormBounds(t *testing.T) {
 				page int
 			}
 			var cases []layoutCase
-			for _, size := range []walk.Size{{Width: 760, Height: 610}, {Width: 960, Height: 760}, {Width: 720, Height: 580}} {
-				for _, page := range []int{4, 0, 1, 2} {
+			for _, size := range []walk.Size{{Width: 700, Height: 520}, {Width: 960, Height: 760}, {Width: 660, Height: 480}} {
+				for _, page := range []int{2, 0, 1} {
 					cases = append(cases, layoutCase{size, page})
 				}
 			}
@@ -106,13 +106,11 @@ func TestCompactLayoutPreservesSettingsAlignmentAndFormBounds(t *testing.T) {
 func compactPageControls(a *application, page int) []walk.Widget {
 	switch page {
 	case 0:
-		return []walk.Widget{a.profile}
+		return []walk.Widget{a.profileChoice, a.authStatus, a.authButton, a.progress}
 	case 1:
-		return []walk.Widget{a.wgConfig, a.vkLink, a.endpoint, a.transport}
-	case 2:
-		return []walk.Widget{a.server, a.cookies, a.cookieText}
+		return []walk.Widget{a.log}
 	default:
-		return []walk.Widget{a.languageChoice, a.themeChoice, a.startupChoice}
+		return []walk.Widget{a.languageChoice, a.logLimitChoice, a.startupChoice}
 	}
 }
 
@@ -132,14 +130,14 @@ func checkCompactPage(a *application, page int, requested walk.Size) error {
 	if err := checkButtonCaptions(a.tabs.Pages().At(page)); err != nil {
 		return err
 	}
-	if page != 4 {
+	if page != 2 {
 		return nil
 	}
 	var language, theme, startup win.RECT
 	win.GetWindowRect(a.languageChoice.Handle(), &language)
-	win.GetWindowRect(a.themeChoice.Handle(), &theme)
+	win.GetWindowRect(a.logLimitChoice.Handle(), &theme)
 	win.GetWindowRect(a.startupChoice.Handle(), &startup)
-	for _, choice := range []*walk.ComboBox{a.languageChoice, a.themeChoice} {
+	for _, choice := range []walk.Widget{a.languageChoice, a.logLimitChoice} {
 		if width := choice.Size().Width; width < 210 || width > 244 {
 			return fmt.Errorf("preference selector is not compact: width %d", width)
 		}

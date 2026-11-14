@@ -10,7 +10,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/lxn/walk"
+	"github.com/lxn/win"
 	"github.com/wailsapp/go-webview2/webviewloader"
 	"golang.org/x/sys/windows"
 )
@@ -44,19 +44,12 @@ func TestWebView2LoginCapturesHttpOnlyCookies(t *testing.T) {
 		}
 		t.Skip("WebView2 Runtime is not installed")
 	}
-	dialog, err := walk.NewDialog(nil)
+	login, err := newVKLoginDialog(nil, "Sign in to VK", "Complete VK login.", "about:blank")
 	if err != nil {
 		t.Fatal(err)
 	}
+	dialog := login.dialog
 	defer dialog.Dispose()
-	browser, err := walk.NewComposite(dialog)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dialog.SetLayout(walk.NewVBoxLayout())
-	dialog.SetSize(walk.Size{Width: 600, Height: 600})
-	login := &vkLogin{dialog: dialog, browser: browser, url: "about:blank"}
-	dialog.Closing().Attach(func(_ *bool, _ walk.CloseReason) { login.closed = true })
 	defer func() {
 		login.closed = true
 		if login.controller != 0 {
@@ -107,6 +100,11 @@ func TestWebView2LoginCapturesHttpOnlyCookies(t *testing.T) {
 					if login.closed || login.manager == 0 {
 						return
 					}
+					bounds := login.browser.ClientBoundsPixels()
+					if bounds.Width < 400 || bounds.Height < 400 {
+						login.finishError(windows.ERROR_INVALID_WINDOW_HANDLE)
+						return
+					}
 					if !injected {
 						injected = true
 						for _, item := range [][3]string{{"remixsid", "fixture-session", ".vk.ru"}, {"p", "fixture-token", ".login.vk.ru"}} {
@@ -140,5 +138,62 @@ func TestWebView2LoginCapturesHttpOnlyCookies(t *testing.T) {
 	}
 	if !strings.Contains(login.text, "remixsid\tfixture-session") || !strings.Contains(login.text, "p\tfixture-token") {
 		t.Fatal("required HttpOnly cookies were not captured")
+	}
+}
+
+// Exercise the actual dashboard button and its registered production callback.
+func TestDashboardVKButtonOpensLoginWindow(t *testing.T) {
+	if version, err := webviewloader.GetAvailableCoreWebView2BrowserVersionString(""); err != nil || version == "" {
+		if os.Getenv("VKTURN_REQUIRE_WEBVIEW2_TEST") == "1" {
+			t.Fatal("WebView2 Runtime is required for this test run")
+		}
+		t.Skip("WebView2 Runtime is not installed")
+	}
+	a := newPreferencesWindow(t, "en", "light")
+	opened := false
+	finished := make(chan struct{})
+	defer close(finished)
+	go func() {
+		ticker := time.NewTicker(25 * time.Millisecond)
+		defer ticker.Stop()
+		timeout := time.NewTimer(10 * time.Second)
+		defer timeout.Stop()
+		for {
+			select {
+			case <-finished:
+				return
+			case <-timeout.C:
+				a.window.Synchronize(func() {
+					popup := win.GetWindow(a.window.Handle(), win.GW_ENABLEDPOPUP)
+					if popup != 0 && popup != a.window.Handle() {
+						win.PostMessage(popup, win.WM_CLOSE, 0, 0)
+					}
+					a.window.Close()
+				})
+				return
+			case <-ticker.C:
+				a.window.Synchronize(func() {
+					popup := win.GetWindow(a.window.Handle(), win.GW_ENABLEDPOPUP)
+					if popup == 0 || popup == a.window.Handle() || !win.IsWindowVisible(popup) {
+						return
+					}
+					var bounds win.RECT
+					if win.GetWindowRect(popup, &bounds) && bounds.Right-bounds.Left >= 540 && bounds.Bottom-bounds.Top >= 580 {
+						opened = true
+						win.PostMessage(popup, win.WM_CLOSE, 0, 0)
+					}
+				})
+			}
+		}
+	}()
+	time.AfterFunc(50*time.Millisecond, func() {
+		a.window.Synchronize(func() {
+			win.SendMessage(a.authButton.Handle(), win.BM_CLICK, 0, 0)
+			a.window.Close()
+		})
+	})
+	a.window.Run()
+	if !opened {
+		t.Fatal("dashboard Sign in to VK button did not open the browser login window")
 	}
 }

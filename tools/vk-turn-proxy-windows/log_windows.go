@@ -12,6 +12,7 @@ import (
 type logView struct {
 	text   string
 	follow bool
+	limit  int
 }
 
 func (v *logView) Reset(edit *walk.TextEdit) {
@@ -23,11 +24,26 @@ func (v *logView) Reset(edit *walk.TextEdit) {
 
 // Append changes only the affected text and preserves a reader's viewport.
 func (v *logView) Append(edit *walk.TextEdit, line string) {
+	v.applyPlan(edit, planLogAppend(v.text, line, v.limit))
+}
+
+func (v *logView) SetLimit(edit *walk.TextEdit, limit int) {
+	v.limit = normalizeLogLimit(limit)
+	edit.SetMaxLength(logMaxBytes)
+	v.applyPlan(edit, trimLogText(v.text, "", v.limit))
+}
+
+func (a *application) setLogLimit(limit int) {
+	a.preferences.LogLines = normalizeLogLimit(limit)
+	a.logView.SetLimit(a.log, a.preferences.LogLines)
+	a.savePreferences()
+}
+
+func (v *logView) applyPlan(edit *walk.TextEdit, plan logAppend) {
 	start, end := edit.TextSelection()
 	follow := v.followsTail(edit) && start == end
 	firstLine := edit.SendMessage(win.EM_GETFIRSTVISIBLELINE, 0, 0)
 	firstChar := int(edit.SendMessage(win.EM_LINEINDEX, firstLine, 0))
-	plan := planLogAppend(v.text, line)
 	removedChars := utf16Length(v.text[:plan.removed])
 	visible := win.IsWindowVisible(edit.Handle())
 	if visible {

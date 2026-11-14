@@ -20,7 +20,7 @@ func newPreferencesWindow(t *testing.T, language, theme string) *application {
 	t.Helper()
 	runtime.LockOSThread()
 	t.Cleanup(runtime.UnlockOSThread)
-	a := &application{preferences: preferences{Language: language, Theme: theme}, preferencesPath: filepath.Join(t.TempDir(), "preferences.json")}
+	a := &application{preferences: preferences{Language: language, Theme: theme, LogLines: defaultLogLines}, preferencesPath: filepath.Join(t.TempDir(), "preferences.json")}
 	if err := a.createWindow(); err != nil {
 		t.Fatal(err)
 	}
@@ -37,18 +37,19 @@ func newPreferencesWindow(t *testing.T, language, theme string) *application {
 
 func TestLanguageAndThemeChangePreserveConnectionAndInputs(t *testing.T) {
 	a := newPreferencesWindow(t, "en", "light")
-	a.profile.SetText("vkturnproxy://import?data=example")
-	a.setCookieText("remixsid=test-session; p=test-token", "text")
+	a.profiles = profileStore{Profiles: []savedProfile{{ID: "test", Name: "Example", Mode: "link", ProfileText: "vkturnproxy://import?data=example"}}, ActiveID: "test"}
+	a.refreshProfiles()
+	a.vkCookieText = "remixsid=test-session; p=test-token"
 	a.setRunning(true)
 	a.setConnectionState("connected")
 	a.preferences.Language = "ru"
 	a.preferences.Theme = "dark"
 	a.applyLanguage()
 	a.applyTheme()
-	if a.connect.Text() != "Подключить" || a.status.Text() != "Подключено" || a.tabs.Pages().At(4).Title() != "Настройки" {
+	if a.connect.Text() != "Подключить" || a.status.Text() != "Подключено" || a.tabs.Pages().At(2).Title() != "Настройки" {
 		t.Fatal("language did not update existing controls")
 	}
-	if a.profile.TextColor() != walk.RGB(235, 238, 243) {
+	if a.log.TextColor() != walk.RGB(235, 238, 243) {
 		t.Fatal("dark editor retained unreadable light-theme foreground")
 	}
 	for _, binding := range a.textBindings {
@@ -56,10 +57,10 @@ func TestLanguageAndThemeChangePreserveConnectionAndInputs(t *testing.T) {
 			t.Fatal("dark heading retained navy foreground")
 		}
 	}
-	if a.palette.window != walk.RGB(28, 30, 34) || a.profile.Text() != "vkturnproxy://import?data=example" || a.connectionState != "connected" {
+	if a.palette.window != walk.RGB(28, 30, 34) || a.profiles.Profiles[0].ProfileText != "vkturnproxy://import?data=example" || a.connectionState != "connected" {
 		t.Fatal("theme change modified connection state or profile")
 	}
-	if a.cookieText.Text() != "remixsid=test-session; p=test-token" {
+	if a.vkCookieText != "remixsid=test-session; p=test-token" {
 		t.Fatal("language or theme change modified cookie input")
 	}
 }
@@ -123,11 +124,11 @@ func TestCaptureProgressWindows(t *testing.T) {
 					return
 				default:
 				}
-				profileBounds := a.profile.BoundsPixels()
+				profileBounds := a.profileChoice.BoundsPixels()
 				progressBounds := a.progress.BoundsPixels()
 				phaseBounds := a.phaseLabel.BoundsPixels()
 				statusBounds := a.status.BoundsPixels()
-				ready := profileBounds.Width > 500 && profileBounds.Height > 80 && progressBounds.Width > 500 && progressBounds.Height > 0 && phaseBounds.Width > 0 && phaseBounds.Height > 0 && statusBounds.Width > 0 && statusBounds.Height > 0
+				ready := profileBounds.Width > 200 && profileBounds.Height > 16 && progressBounds.Width > 500 && progressBounds.Height > 0 && phaseBounds.Width > 0 && phaseBounds.Height > 0 && statusBounds.Width > 0 && statusBounds.Height > 0
 				stable := profileBounds == previousProfile && progressBounds == previousProgress && phaseBounds == previousPhase && statusBounds == previousStatus
 				previousProfile, previousProgress = profileBounds, progressBounds
 				previousPhase, previousStatus = phaseBounds, statusBounds
@@ -167,7 +168,11 @@ func TestCaptureProgressWindows(t *testing.T) {
 }
 
 func saveProgressWindow(a *application, path string) error {
-	bitmap, err := walk.NewBitmapForDPI(a.window.SizePixels(), a.window.DPI())
+	return saveCapturedWindow(a.window.Handle(), a.window.SizePixels(), a.window.DPI(), path)
+}
+
+func saveCapturedWindow(handle win.HWND, size walk.Size, dpi int, path string) error {
+	bitmap, err := walk.NewBitmapForDPI(size, dpi)
 	if err != nil {
 		return err
 	}
@@ -176,7 +181,7 @@ func saveProgressWindow(a *application, path string) error {
 	if err != nil {
 		return err
 	}
-	result, _, printError := windows.NewLazySystemDLL("user32.dll").NewProc("PrintWindow").Call(uintptr(a.window.Handle()), uintptr(canvas.HDC()), 2)
+	result, _, printError := windows.NewLazySystemDLL("user32.dll").NewProc("PrintWindow").Call(uintptr(handle), uintptr(canvas.HDC()), 2)
 	canvas.Dispose()
 	if result == 0 {
 		return fmt.Errorf("capture rendered window: %w", printError)

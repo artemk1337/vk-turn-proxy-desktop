@@ -24,42 +24,44 @@ import (
 const maxProfileSize = 4 << 20
 
 type application struct {
-	window                             *walk.MainWindow
-	tray                               *trayController
-	tabs                               *walk.TabWidget
-	linkPage, manualPage, advancedPage *walk.TabPage
-	profile                            *walk.TextEdit
-	profilePlaceholder                 win.HWND
-	wgConfig                           *walk.TextEdit
-	vkLink, endpoint                   *walk.LineEdit
-	transport                          *walk.ComboBox
-	server, cookies                    *walk.LineEdit
-	cookieText                         *walk.TextEdit
-	connect, disconnect                *walk.PushButton
-	status, modeLabel                  *walk.Label
-	log                                *walk.TextEdit
-	command                            *exec.Cmd
-	stopFile                           string
-	closing                            bool
-	logView                            logView
-	inputMode                          int
-	preferences                        preferences
-	preferencesPath                    string
-	preferencesError                   error
-	updatingPreferences                bool
-	languageChoice, themeChoice        *walk.ComboBox
-	startupChoice                      *walk.CheckBox
-	textBindings                       []textBinding
-	cueBindings                        []cueBinding
-	mutedLabels                        map[*walk.Label]bool
-	palette                            themePalette
-	themeBrushes                       []*walk.SolidColorBrush
-	nativeInputBrush                   win.HBRUSH
-	nativeTabs                         win.HWND
-	progress                           *walk.CustomWidget
-	phaseLabel                         *walk.Label
-	connectionState                    string
-	progressFrame                      int
+	window                                                   *walk.MainWindow
+	tray                                                     *trayController
+	tabs                                                     *walk.TabWidget
+	profileChoice                                            *walk.ComboBox
+	addProfileButton, editProfileButton, removeProfileButton *walk.PushButton
+	authStatus                                               *walk.Label
+	authButton, authDetailsButton, themeToggle               *walk.PushButton
+	vkAuth                                                   vkAuthState
+	vkCookieText, vkCookieFile                               string
+	profiles                                                 profileStore
+	profilesPath                                             string
+	updatingProfiles                                         bool
+	logLimitChoice                                           *walk.NumberEdit
+	connect, disconnect                                      *walk.PushButton
+	status, modeLabel                                        *walk.Label
+	log                                                      *walk.TextEdit
+	command                                                  *exec.Cmd
+	stopFile                                                 string
+	closing                                                  bool
+	logView                                                  logView
+	preferences                                              preferences
+	preferencesPath                                          string
+	preferencesError                                         error
+	updatingPreferences                                      bool
+	languageChoice                                           *walk.ComboBox
+	startupChoice                                            *walk.CheckBox
+	tooltipBindings                                          []tooltipBinding
+	textBindings                                             []textBinding
+	cueBindings                                              []cueBinding
+	mutedLabels                                              map[*walk.Label]bool
+	palette                                                  themePalette
+	themeBrushes                                             []*walk.SolidColorBrush
+	nativeInputBrush                                         win.HBRUSH
+	nativeTabs                                               win.HWND
+	progress                                                 *walk.CustomWidget
+	phaseLabel                                               *walk.Label
+	connectionState                                          string
+	progressFrame                                            int
 }
 
 func main() {
@@ -113,14 +115,6 @@ func (a *application) fail(err error) {
 	walk.MsgBox(a.window, "VK TURN Proxy", err.Error(), walk.MsgBoxIconError)
 }
 
-func (a *application) openProfile() {
-	a.openConfigFile(a.profile, a.tr("Open JSON connection profile"), "Profiles (*.json;*.txt)|*.json;*.txt|All files (*.*)|*.*")
-}
-
-func (a *application) openWireGuard() {
-	a.openConfigFile(a.wgConfig, a.tr("Open WireGuard configuration"), "WireGuard (*.conf)|*.conf|All files (*.*)|*.*")
-}
-
 func (a *application) openConfigFile(target *walk.TextEdit, title, filter string) {
 	dialog := walk.FileDialog{Title: title, Filter: a.tr(filter)}
 	ok, err := dialog.ShowOpen(a.window)
@@ -157,20 +151,25 @@ func (a *application) openCookies() {
 		return
 	}
 	if ok {
-		a.cookieText.SetText("")
-		a.cookies.SetText(dialog.FilePath)
+		a.vkCookieText = ""
+		a.vkCookieFile = dialog.FilePath
+		a.saveVKAuth()
+		a.checkVKAuth()
 	}
 }
 
 func (a *application) setCookieText(text, source string) {
-	a.cookies.SetText("")
-	a.cookieText.SetText(text)
+	a.vkCookieFile = ""
+	a.vkCookieText = text
+	a.saveVKAuth()
+	a.checkVKAuth()
 }
 
 func (a *application) start() {
 	if a.command != nil {
 		return
 	}
+	a.checkVKAuth()
 	profile, err := a.connectionProfile()
 	if err != nil {
 		a.fail(err)
@@ -224,11 +223,12 @@ func (a *application) start() {
 		"-log", filepath.Join(root, "client.log"),
 		"-block-ipv6=true",
 	}
-	if name := strings.TrimSpace(a.server.Text()); a.inputMode == 0 && name != "" {
+	selected, _ := a.selectedProfile()
+	if name := strings.TrimSpace(selected.ServerName); selected.Mode == "link" && name != "" {
 		args = append(args, "-server", name)
 	}
-	cookiePath := a.cookies.Text()
-	if text := strings.TrimSpace(a.cookieText.Text()); text != "" {
+	cookiePath := ""
+	if text := strings.TrimSpace(a.currentVKCookies()); text != "" {
 		cookiePath = filepath.Join(session, "cookies.txt")
 		if err := os.WriteFile(cookiePath, []byte(text), 0600); err != nil {
 			os.RemoveAll(session)
@@ -301,9 +301,13 @@ func (a *application) start() {
 }
 
 func (a *application) setRunning(running bool) {
-	a.linkPage.SetEnabled(!running)
-	a.manualPage.SetEnabled(!running)
-	a.advancedPage.SetEnabled(!running)
+	a.profileChoice.SetEnabled(!running)
+	a.addProfileButton.SetEnabled(!running)
+	_, selected := a.selectedProfile()
+	a.editProfileButton.SetEnabled(!running && selected)
+	a.removeProfileButton.SetEnabled(!running && selected)
+	a.authDetailsButton.SetEnabled(!running)
+	a.authButton.SetEnabled(!running)
 	a.connect.SetEnabled(!running)
 	a.disconnect.SetEnabled(running)
 }

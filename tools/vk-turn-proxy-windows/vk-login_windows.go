@@ -108,7 +108,12 @@ type vkLogin struct {
 
 func (a *application) openVKLogin() {
 	if version, err := webviewloader.GetAvailableCoreWebView2BrowserVersionString(""); err != nil || version == "" {
-		walk.MsgBox(a.window, a.tr("VK login"), a.tr("Install Microsoft Edge WebView2 Runtime to sign in through VK.\nhttps://go.microsoft.com/fwlink/p/?LinkId=2124703"), walk.MsgBoxIconInformation)
+		if walk.MsgBox(a.window, a.tr("VK login"), a.tr("Install Microsoft Edge WebView2 Runtime to sign in through VK. Open the installer page?"), walk.MsgBoxYesNo|walk.MsgBoxIconInformation) == walk.DlgCmdYes {
+			err := windows.ShellExecute(windows.Handle(a.window.Handle()), windows.StringToUTF16Ptr("open"), windows.StringToUTF16Ptr("https://go.microsoft.com/fwlink/p/?LinkId=2124703"), nil, nil, windows.SW_SHOWNORMAL)
+			if err != nil {
+				a.fail(err)
+			}
+		}
 		return
 	}
 	root, err := windows.KnownFolderPath(windows.FOLDERID_LocalAppData, 0)
@@ -126,28 +131,13 @@ func (a *application) openVKLogin() {
 		a.fail(err)
 		return
 	}
-	login := &vkLogin{url: "https://vk.ru/"}
-	login.dialog, err = walk.NewDialog(a.window)
+	login, err := newVKLoginDialog(a.window, a.tr("Sign in to VK"), a.tr("Complete VK login. This window closes when the required cookies are ready."), "https://vk.ru/")
 	if err != nil {
 		os.RemoveAll(profile)
 		a.fail(err)
 		return
 	}
 	defer login.dialog.Dispose()
-	login.dialog.SetTitle(a.tr("Sign in to VK"))
-	login.dialog.Closing().Attach(func(_ *bool, _ walk.CloseReason) { login.closed = true })
-	login.dialog.SetSize(walk.Size{Width: 620, Height: 760})
-	login.dialog.SetLayout(walk.NewVBoxLayout())
-	hint, _ := walk.NewLabel(login.dialog)
-	hint.SetText(a.tr("Complete VK login. This window closes when the required cookies are ready."))
-	login.browser, err = walk.NewComposite(login.dialog)
-	if err != nil {
-		os.RemoveAll(profile)
-		a.fail(err)
-		return
-	}
-	login.browser.SetMinMaxSize(walk.Size{Width: 400, Height: 500}, walk.Size{})
-	login.browser.SizeChanged().Attach(login.resize)
 	stop := make(chan struct{})
 	defer close(stop)
 	defer func() {
@@ -177,12 +167,20 @@ func (a *application) openVKLogin() {
 		}
 	})
 	go func() {
+		startup := time.NewTimer(30 * time.Second)
+		defer startup.Stop()
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-stop:
 				return
+			case <-startup.C:
+				login.dialog.Synchronize(func() {
+					if !login.closed && login.view == 0 {
+						login.finishError(fmt.Errorf("WebView2 startup timed out"))
+					}
+				})
 			case <-ticker.C:
 				login.dialog.Synchronize(func() {
 					if !login.closed {
@@ -199,6 +197,37 @@ func (a *application) openVKLogin() {
 	} else if login.text != "" {
 		a.setCookieText(login.text, "VK website login")
 	}
+}
+
+// The production action and native tests share the complete browser layout.
+func newVKLoginDialog(owner walk.Form, title, hintText, url string) (*vkLogin, error) {
+	login := &vkLogin{url: url}
+	var err error
+	login.dialog, err = walk.NewDialog(owner)
+	if err != nil {
+		return nil, err
+	}
+	fail := func(err error) (*vkLogin, error) { login.dialog.Dispose(); return nil, err }
+	login.dialog.SetTitle(title)
+	login.dialog.Closing().Attach(func(_ *bool, _ walk.CloseReason) { login.closed = true })
+	login.dialog.SetMinMaxSize(walk.Size{Width: 580, Height: 660}, walk.Size{})
+	layout := walk.NewVBoxLayout()
+	if err = login.dialog.SetLayout(layout); err != nil {
+		return fail(err)
+	}
+	hint, err := walk.NewLabel(login.dialog)
+	if err != nil {
+		return fail(err)
+	}
+	hint.SetText(hintText)
+	login.browser, err = walk.NewComposite(login.dialog)
+	if err != nil {
+		return fail(err)
+	}
+	login.browser.SetMinMaxSize(walk.Size{Width: 540, Height: 580}, walk.Size{})
+	layout.SetStretchFactor(login.browser, 1)
+	login.browser.SizeChanged().Attach(login.resize)
+	return login, nil
 }
 
 func (l *vkLogin) EnvironmentCompleted(status webviewloader.HRESULT, environment *webviewloader.ICoreWebView2Environment) webviewloader.HRESULT {

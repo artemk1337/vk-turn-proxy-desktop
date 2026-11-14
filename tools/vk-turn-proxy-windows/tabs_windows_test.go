@@ -70,7 +70,7 @@ func verifyTabHover(a *application) error {
 	})
 	win.SetWindowLongPtr(a.nativeTabs, win.GWLP_WNDPROC, probe)
 	defer win.SetWindowLongPtr(a.nativeTabs, win.GWLP_WNDPROC, original)
-	win.SetFocus(a.profile.Handle())
+	win.SetFocus(a.profileChoice.Handle())
 	redraw := func() {
 		win.RedrawWindow(a.nativeTabs, nil, 0, win.RDW_INVALIDATE|win.RDW_UPDATENOW)
 	}

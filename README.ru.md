@@ -20,22 +20,24 @@
 Установите `.deb` в Debian или Ubuntu и откройте **VK TURN Proxy** из меню приложений
 
 ```sh
-sudo apt install ./vk-turn-proxy-linux-v1.0.2-amd64.deb
+sudo apt install ./vk-turn-proxy-linux-v1.1.0-amd64.deb
 ```
 
 Для portable-версии распакуйте `.tar.gz` и запустите `./vk-turn-proxy-desktop`. Нужны Python 3, GTK 3, PyGObject, iproute2 и polkit. При подключении приложение запросит права администратора.
 
 ## Подключение
 
-1. Вставьте `vkturnproxy://import?data=…` на вкладке **Ссылка профиля** или откройте JSON-профиль. Можно вставить сам JSON или Base64.
-2. Для ручной настройки откройте **Конфигурация WireGuard**, загрузите `.conf` и укажите приглашение в VK-звонок. Введите адрес TURN-сервера, обычно `host:56000`, или оставьте поле пустым для использования `Endpoint`. Выберите SRTP или DTLS в соответствии с сервером.
-3. Нажмите **Подключить**. Кнопка **Отключить** завершает соединение.
+**Windows:** нажмите **Добавить** в разделе **Подключение**, выберите ссылку/JSON профиля или WireGuard-конфиг с приглашением в VK-звонок и сохраните. Выберите профиль из списка и нажмите **Подключить**.
+
+**Linux:** вставьте `vkturnproxy://import?data=…` на вкладке **Ссылка профиля** или загрузите `.conf` в **Конфигурация WireGuard** и укажите приглашение в VK-звонок. Можно вставить JSON или Base64.
+
+При ручной настройке укажите TURN-сервер, обычно `host:56000`, или оставьте поле пустым для использования `Endpoint`. Выберите SRTP или DTLS в соответствии с сервером.
 
 Ручной режим требует один peer, IPv4 и `AllowedIPs = 0.0.0.0/0`. Для SRTP сервер запускают с флагом `-srtp`.
 
-Для доступа через учётную запись VK откройте **Дополнительно**. Нажмите **Войти в VK**, загрузите Netscape-файл `cookies.txt` или вставьте `remixsid=…; p=…`. Для входа через сайт нужен [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) в Windows или WebKitGTK (`gir1.2-webkit2-4.1`) в Linux.
+В Windows кнопка **Войти в VK** находится на главном экране. Учётная запись общая для всех профилей, сессия проверяется каждые пять минут. Через **Cookies…** можно загрузить Netscape-файл или вставить `remixsid=…; p=…`. В Linux эти действия доступны в разделе **Дополнительно**. Для входа через сайт нужен [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) в Windows или WebKitGTK (`gir1.2-webkit2-4.1`) в Linux.
 
-Язык, тема и автозапуск доступны в **Настройках**. Закрытие окна сворачивает клиент в трей, если он доступен. Пункт **Выход** в меню трея отключает туннель и закрывает приложение.
+В **Настройках** доступны язык, автозапуск и лимит журнала Windows (по умолчанию 1000 строк). Кнопка луны/солнца переключает тему Windows. Закрытие окна сворачивает клиент в трей, если он доступен. **Выход** отключает туннель и закрывает приложение.
 
 ## Терминал
 
@@ -56,8 +58,8 @@ sudo vk-turn-proxy-console -wizard
 ## Сборка
 
 ```sh
-docker build --build-arg VERSION=v1.0.2 --output dist/windows -f Dockerfile.windows .
-docker build --build-arg VERSION=v1.0.2 --output dist/linux -f Dockerfile.linux .
+docker build --build-arg VERSION=v1.1.0 --output dist/windows -f Dockerfile.windows .
+docker build --build-arg VERSION=v1.1.0 --output dist/linux -f Dockerfile.linux .
 ```
 
 В `dist` появятся ZIP и установщики Windows, архивы и DEB-пакеты Linux для x64 и ARM64 с контрольными суммами.
