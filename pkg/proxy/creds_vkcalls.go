@@ -76,9 +76,7 @@ const (
 // captcha-free VK Calls path so GetVKCreds falls through to the legacy
 // captchaNotRobot.* solver. Used for ON-DEVICE testing of the captcha solver:
 // the free path is captcha-free, so the solver (header-order fix + slider)
-// never runs in normal use. On iOS it's driven by an undocumented
-// `forceLegacyCaptcha` field in the backup JSON, plumbed through ProxyConfig ->
-// wgStartVKBootstrap -> SetForceLegacyCaptcha. Default false.
+// never runs in normal use. Default false.
 var forceLegacyCaptcha atomic.Bool
 
 // SetForceLegacyCaptcha sets the force-legacy-captcha on-device test flag.
@@ -92,9 +90,8 @@ func getVKCredsViaVKCallsPath(linkID string) (*TURNCreds, error) {
 	// Diagnostic escape hatch: skip the captcha-free path entirely so
 	// GetVKCreds falls through to the legacy captchaNotRobot.* solver — lets us
 	// exercise a real captcha + observe what VK serves (slider vs checkbox).
-	// Two triggers: VK_SKIP_VKCALLS=1 env (standalone tools/captcha_test on
-	// Mac), or SetForceLegacyCaptcha(true) (iOS, from the undocumented backup
-	// `forceLegacyCaptcha` field). Both default off → no effect in production.
+	// Set VK_SKIP_VKCALLS=1 or call SetForceLegacyCaptcha(true) to enable it.
+	// Both triggers default off.
 	if forceLegacyCaptcha.Load() || os.Getenv("VK_SKIP_VKCALLS") == "1" {
 		return nil, fmt.Errorf("vkcalls skipped (force legacy captcha for on-device test)")
 	}

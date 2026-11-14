@@ -85,7 +85,7 @@ const (
 	PaceOff = 0
 
 	// paceWireOverhead is what VK counts per packet on top of the bytes we hand
-	// it — measured at ~30 B → reference_throughput_limits §2c.
+	// it, measured at approximately 30 bytes.
 	paceWireOverhead = 30
 
 	// paceMaxCost is the reservation taken before dequeuing: the largest packet
@@ -149,7 +149,7 @@ const (
 	PaceDefaultBurstKiB = 16
 
 	// paceMaxConns bounds the per-connection bucket table. The pool ceiling is
-	// 60 (reference_throughput_limits §2h); this leaves room and keeps the
+	// 60; this leaves room and keeps the
 	// table a fixed array so a writer never allocates on the hot path.
 	paceMaxConns = 64
 )
@@ -434,7 +434,7 @@ func (p *Proxy) paceReserve(connIdx int) paceTicket {
 	// that cannot notice the pacer being turned OFF, the split changing, or the
 	// context ending — the parked-writer trap in a third place. Waking every
 	// 10 ms costs nothing at these rates and makes a live toggle land within one
-	// slice. *(reference_uplink_dispatcher §0.)*
+	// slice.
 	const slice = 10 * time.Millisecond
 	left := wait
 	for left > 0 {

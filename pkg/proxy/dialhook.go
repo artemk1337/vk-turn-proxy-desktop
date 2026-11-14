@@ -3,15 +3,11 @@ package proxy
 // The dial hook: every destination the proxy is about to send to, before its
 // first packet leaves.
 //
-// On iOS nothing is ever set. A Network Extension's own sockets are not
-// captured by its own tunnel, so the relays and VK's API hosts are reached over
-// the physical path by construction. A console client that moves the DEFAULT
-// route into the tunnel has no such exemption: the proxy's own traffic — TURN
-// to the relays, the VK API and the captcha's hosts behind every mint — would
-// go into the very tunnel it carries, and after a network change a tunnel whose
-// sessions are dead could not mint its way back. The console sets a hook that
-// pins each destination to the physical gateway the moment it is dialled
-// (tools/vk-turn-proxy-console).
+// A client that moves the default route into the tunnel must keep its own
+// TURN, VK API and captcha traffic on the physical gateway. Otherwise the
+// proxy would route into the tunnel it carries and could not recover after
+// a network change. The console installs this hook before each destination
+// is dialled (tools/vk-turn-proxy-console).
 //
 // 🚨 EVERY socket the proxy opens toward a remote goes through it: the TURN
 // control connection of runTURN and of setupSRTPSession on both transports,

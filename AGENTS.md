@@ -14,6 +14,7 @@ Journal network changes before applying them. Route VK and TURN traffic through 
 
 - Keep `README.md` in English, with links to separate `README.<language>.md` translations. Each translation links back to English.
 - Explain supported profile formats, installer and portable setup, GUI and terminal workflows. Keep the wording direct and practical, with upstream attribution.
+- Describe imported profiles by their data format in documentation and UI. Keep upstream attribution in Related projects and NOTICE.md.
 - Release notes contain only a concise list of changes. Keep setup instructions and build details in the README.
 - Build releases locally in Docker. Publish portable ZIPs and installers for x64 and ARM64 with checksums for every package.
 - Run console, profile, preferences and transport tests. Verify Windows startup, autostart lifecycle, installer install/uninstall, both languages and themes, and connection progress before publishing.

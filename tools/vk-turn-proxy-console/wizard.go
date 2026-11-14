@@ -247,7 +247,7 @@ func (w *setupWizard) selectServer(profile *backupFile, o *options) error {
 	if len(servers) <= 1 || o.serverName != "" {
 		return nil
 	}
-	fmt.Fprintln(w.output, w.text("\nServers in backup", "\nСерверы в резервной копии"))
+	fmt.Fprintln(w.output, w.text("\nServers in profile", "\nСерверы в профиле"))
 	fallback := 1
 	selected, selectionErr := profile.selectedServer("")
 	for i, server := range servers {

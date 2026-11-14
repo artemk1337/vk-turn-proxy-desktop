@@ -95,7 +95,7 @@ func TestTheFirstNativeServerIsChosenAndAnotherModeIsRefused(t *testing.T) {
 }
 
 // An absent key takes the app's default — and useSrtp's is TRUE: a server
-// saved before the key existed is SRTP (ServerProfile.swift).
+// saved before the key existed uses SRTP.
 func TestAbsentKeysTakeTheAppsDefaults(t *testing.T) {
 	sparse := map[string]any{"serverName": "Old", "privateKey": testKey(1), "peerPublicKey": testKey(2), "peerAddress": "192.0.2.10:56004"}
 	b, err := loadBackup(writeBackup(t, globals(sparse)))

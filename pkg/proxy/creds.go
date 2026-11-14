@@ -25,12 +25,7 @@ import (
 // vkAPIHost returns the FQDN used for all api.vk.* method calls
 // (calls.getAnonymousToken, captchaNotRobot.*, etc).
 //
-// Default "api.vk.ru". Override via VK_API_HOST env var — used for
-// the 2026-05-17 evening test that VK Calls iOS app appears to call
-// `api.vk.me` (different FQDN, same backend IPs) and is not captcha-
-// gated for anonymous join. Hypothesis: VK gates per-(FQDN, client_id),
-// so just switching the host might let our existing VK iOS App credentials
-// pass without captcha. See progress_summary_may_17_2026.md for context.
+// Defaults to api.vk.ru. VK_API_HOST overrides the host for diagnostics.
 func vkAPIHost() string {
 	if h := os.Getenv("VK_API_HOST"); h != "" {
 		return h
@@ -45,7 +40,7 @@ func vkAPIHost() string {
 // Centralised so this is a one-line change — revert to vk.com here if a live-VK
 // test shows the anon path (api.vk.me link= and api.vk.ru vk_join_link=) rejects
 // the vk.ru join link. NOTE: this is the link we SEND to VK — NOT the user-link
-// parser (Swift BackupManager.stripVkUrl), which must accept BOTH domains.
+// parser, which accepts both domains.
 const vkCallJoinBase = "https://vk.ru/call/join/"
 
 // credExpiryBuffer is the safety margin before a TURN cred's expiry timestamp
@@ -177,7 +172,7 @@ func (e *CallUnavailableError) Error() string {
 // rotate per-conn: iOS includeAllNetworks=true allows only one exempt
 // host (NEVPNProtocol.serverAddress), and routing the second TURN
 // endpoint through the tunnel collapses throughput to ~0.5 Mbps via
-// recursive routing (observed in TunnelManager.swift:355 history).
+// recursive routing. Clients must pin all relay traffic to the physical path.
 // Address stays populated as Addresses[0] for back-compat with code that
 // reads the singular field (cred caches, log strings, JSON marshaling).
 type TURNCreds struct {
@@ -210,7 +205,7 @@ func isTransientNetworkError(err error) bool {
 		// 🚫 NOT the "dial tcp …: connect: can't assign requested address" of
 		// an IPv6-only Wi-Fi without an IPv4 source — that one fails every
 		// dial in 30–200 ms and retrying it for 12 waves × 4 s would only
-		// delay the same answer (reference_ios_ipv4_only_eaddrnotavail).
+		// delay the same answer.
 		strings.Contains(s, "read: can't assign requested address") ||
 		strings.Contains(s, "write: can't assign requested address") ||
 		strings.Contains(s, "i/o timeout") ||
@@ -637,9 +632,6 @@ func getVKCredsWithClientID(linkID string, vc vkCredentials, captchaSolver Captc
 				// SKIPPED the third attempt — so the log accused VK's identity
 				// verdict of a defect that was entirely ours, and the device log
 				// and my own first reading both believed it.
-				// *(2026-08-18; the same shape as every entry in
-				// reference_instruments_that_lie: a zero value quoted as a
-				// measurement.)*
 				//
 				// So the hint counts only when the attempt actually reached VK's
 				// answer, which is exactly when there is no error to report.
@@ -931,9 +923,8 @@ const credCacheVersion = 2
 // account's credential used in anonymous mode deanonymises the account, and
 // anonymous ones used under the account are the previous run's, not its own
 // (the console, 2026-09-30: forty connections ran on the anonymous cache in
-// cookie mode while the account's identity sat in two reserve slots). The app
-// also clears the cache from Swift when the mode changes; the console has no
-// state of its own to know that it did. A file without the field is an
+// cookie mode while the account's identity sat in two reserve slots).
+// A file without the field is an
 // anonymous one — every cache written before the field existed. The mode is
 // the pool's from its creation (credCacheModeNow at newCredPool), not the
 // global flag's at save time: the app turns cookie auth off at stop, before
@@ -1096,20 +1087,10 @@ const pauseAcquireAfterPathEvent = 500 * time.Millisecond
 // burst's stamp keeps moving with its last event, as it always did — csqtt
 // releases every lease within ms of the kick, so its follow-ups find
 // nothing live) — never by a FIRST event on an idle pool. The tunnel's own
-// start is such an event: NWPathMonitor's initial "satisfied" report is
-// forwarded to Go only if Swift's backend already exists, a race the user
-// cannot see (measured on builds 355–369: the report is processed +1–4 ms
-// after startTunnel on a cellular start and +15–27 ms on Wi-Fi, the
-// backend exists at +8–95 ms — it reached Go in 1 of 22 starts, 1 of 4 on
-// Wi-Fi, 0 of 18 on cellular), 1.5 s before conn 0 takes its seat, with
-// nothing to protect. Recorded, it made the FIRST real switch 0.5–90 s
-// after Connect read as a cascade: 07.09 run B paid the full 30 s (89
-// parks, 39 dormancies, 30/30 only 31.5 s after the event) where run A,
-// whose report lost the race, paid 500 ms. A chain of real flaps still
-// re-arms through the cascade branch even when every conn is parked and no
-// slot is live. Accepted trade: a chain whose FIRST event lands on a pool
-// that an outage of ≥ 90 s emptied is caught one event later (one extra
-// 3-slot set) — unobserved in the archive.
+// start is such an event. Recording an idle startup notification would make
+// the first real path switch look like a cascade and incur a 30-second pause.
+// Real cascades re-arm even while all connections are parked. A cascade that
+// starts after an outage emptied the pool is detected one event later.
 //
 // 90s window comfortably covers observed real cascades with margin (typical
 // gap 25-60s). 30s pause covers the time conns would otherwise redistribute
@@ -1123,9 +1104,9 @@ const pauseAcquireAfterPathEvent = 500 * time.Millisecond
 const cascadeDetectionWindow = 90 * time.Second
 const cascadePauseDuration = 30 * time.Second
 
-// credCacheFile is the JSON-on-disk shape persisted to App Group container.
-// One file per pool. Contents are non-secret: VK TURN creds are session
-// tokens with ~8h validity, sandbox-protected by App Group entitlement.
+// credCacheFile is the persisted pool cache. Each pool has one file containing
+// TURN session credentials with approximately eight hours of validity.
+// The caller must store it in a protected application directory.
 // Runtime state (saturatedUntil, cooldownUntil, active count, fetching)
 // is intentionally excluded — those are per-process and shouldn't survive
 // across launches.
@@ -1326,11 +1307,9 @@ type credPool struct {
 	// 13:01:08 → 13:02:32, the log line `(2 ready+inflight >= 2 target)`).
 	coldStartTarget int
 
-	// cachePath is the on-disk JSON file that persists the pool across
-	// extension launches. Empty disables persistence. The file lives in
-	// the App Group container alongside vpn.log and is sandbox-protected
-	// by the group entitlement. Contents (TURN session tokens, ~8h
-	// validity) are not Keychain-grade sensitive.
+	// cachePath persists the pool across client launches. Empty disables
+	// persistence. The caller protects this file because it contains TURN
+	// session credentials.
 	cachePath string
 
 	// saveMu serializes disk writes. saveToDisk snapshots pool state under
@@ -2052,7 +2031,7 @@ func (cp *credPool) saveToDisk() {
 		}
 		// Per relay (relayhist.go): "now" for a relay with seats out, else
 		// the last seat's give-back when within the cooldown; last_used_at
-		// stays the latest of them all (the Swift seed reads it).
+		// stays the latest of them all for bootstrap seeding.
 		var usedOn map[string]int64
 		note := func(relay string, at time.Time) {
 			if relay == "" || at.IsZero() || now.Sub(at) >= credSaturationCooldown {
@@ -2135,9 +2114,8 @@ func (cp *credPool) saveToDisk() {
 		_ = os.Remove(tmpPath)
 		return
 	}
-	// Ensure the directory entry hits the disk too — on iOS App Group
-	// containers the parent directory's metadata write isn't always
-	// flushed by rename alone. Best-effort, log only.
+	// Flush the parent directory so the rename survives a crash.
+	// This is best-effort because some filesystems do not support directory sync.
 	if dir, err := os.Open(filepath.Dir(cp.cachePath)); err == nil {
 		_ = dir.Sync()
 		_ = dir.Close()
@@ -3106,8 +3084,8 @@ func (cp *credPool) applySaturationLocked(slot int, relay string, cooldown time.
 	h.saturationTimer = time.AfterFunc(cooldown, cp.broadcastSlotAvailable)
 }
 
-// MarkInUseSlotsForPathChange is called from Swift's NWPathMonitor on every
-// real (deduped) network-path transition. For each pool slot that VK
+// MarkInUseSlotsForPathChange handles a deduplicated network-path transition.
+// For each pool slot that VK
 // almost-certainly still holds allocations for (active>0 OR lastUsedAt
 // within activeAllocationsWindow), mark it saturated proactively — same
 // effect as if a conn had just hit 486 on the slot, but without the wasted

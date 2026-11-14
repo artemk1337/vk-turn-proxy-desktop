@@ -5,16 +5,10 @@ package main
 // What the proxy is told about the network: the monitor's events in the
 // credential pool's terms.
 //
-// The pool (pkg/proxy) was tuned on iPhones. A path change marks every
-// identity in use — their allocations stay behind on the path that went away
-// and hold their seats at the relay for up to ten minutes — and TWO path
-// changes 0.5–90 s apart are a second handover, a cascade, which pauses every
-// acquire for 30 s. An iPhone's events of ONE switch arrive within half a
-// second: cellular takes over at once. A laptop has nothing to fall to: its
-// switch is "no network" for seconds and then the new one, and a poller
-// cannot report the two closer than its interval. Told as two path changes,
-// every switch read as a cascade (the field, 2026-09-30: a Wi-Fi → hotspot
-// switch cost 33 s where about 4.5 s were due).
+// A path change marks identities whose allocations remain on the old network.
+// Two path changes 0.5-90 seconds apart are treated as a cascade and pause new
+// acquisitions for 30 seconds. Polling can report one desktop handover as
+// separate lost and restored events, so the monitor coalesces those events.
 //
 // So ONE handover is ONE path change:
 //

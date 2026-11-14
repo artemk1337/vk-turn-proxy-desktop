@@ -8,7 +8,7 @@ package proxy
 // This is a SEPARATE wire format from pkg/proxy/wrap.go (the samosvalishe
 // SRTP-WRAP used by our own servers). It exists solely to interoperate with
 // amurcanov's proxy-turn-vk-android server, which ships an Android client
-// only — users keep asking how to reach it from iOS. Despite the "SRTP" in
+// only. Despite the "SRTP" in
 // the UI name, amurcanov's masking is NOT SRTP: it is a plain RTP-framed
 // ChaCha20-Poly1305 envelope wrapping the bytes of a plain DTLS session
 // (UDP/VK-TURN → WRAP-A → plain DTLS → { GETCONF | WireGuard }).
@@ -40,7 +40,7 @@ package proxy
 // The ts carry term (count>>16) is amurcanov's v1.2.0 fix for a nonce-reuse
 // vuln (his implicit nonce repeated every 2^26 packets ≈ 67 GB without it);
 // we mirror it for wire compatibility. Interop-only — our own conn recycling
-// makes the period irrelevant. See reference_amurcanov_wrap_format.md.
+// makes the period irrelevant.
 
 import (
 	"crypto/cipher"

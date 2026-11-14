@@ -14,9 +14,6 @@ package proxy
 // flow directly over the same DTLS conn — there is NO READY handshake (the
 // 1-byte transport keepalive is handled in the WG pump, not here).
 //
-// Verified byte-for-byte against the live server 2026-06-03 (tools/wrapa_test
-// M2). Full protocol spec: reference_amurcanov_wrap_format.md.
-//
 // Architecture note: the server's INI carries `Endpoint=127.0.0.1:<port>`,
 // which is amurcanov's Android-loopback artefact (his app runs WG over a
 // local socket → proxy). It is IRRELEVANT to us — our WireGuard routes via a
@@ -41,16 +38,15 @@ const wrapAGetconfPort = "51820"
 
 // WrapAProvision is the WireGuard configuration the amurcanov server mints
 // for our device via GETCONF. It is populated once per tunnel (the first
-// runWrapASession to complete GETCONF wins) and consumed by the bridge to
-// build the WG UAPI config + the iOS network settings (address/dns/mtu).
+// runWrapASession to complete GETCONF wins). The client uses it to configure
+// WireGuard and the tunnel interface address, DNS and MTU.
 type WrapAProvision struct {
 	// PrivateKeyHex is our (server-minted) WireGuard private key, hex.
 	PrivateKeyHex string `json:"private_key_hex"`
 	// PeerPublicKeyHex is the server's WireGuard public key, hex.
 	PeerPublicKeyHex string `json:"peer_public_key_hex"`
 	// Address is the tunnel interface address in CIDR form (e.g.
-	// "10.66.66.2/32"). Applied to the iOS NEPacketTunnelNetworkSettings,
-	// NOT the UAPI.
+	// "10.66.66.2/32"). Applied to the tunnel interface rather than the UAPI.
 	Address string `json:"address"`
 	// DNS is the server-suggested DNS resolver (e.g. "1.1.1.1").
 	DNS string `json:"dns"`
@@ -63,9 +59,8 @@ type WrapAProvision struct {
 // UAPIConfig renders the WireGuard UAPI configuration string for IpcSet from
 // the provisioned crypto. The endpoint is intentionally a throwaway loopback
 // address — our turnbind conn.Bind ignores it and routes every WG packet
-// through the TURN/WRAP-A transport in-process (see pkg/turnbind/bind.go and
-// the TunnelManager "fake endpoint" comment). Only the keys + keepalive are
-// load-bearing.
+// through the TURN/WRAP-A transport in-process (pkg/turnbind/bind.go).
+// The provision supplies the keys and keepalive interval.
 func (wp *WrapAProvision) UAPIConfig() string {
 	keepalive := wp.KeepaliveSec
 	if keepalive <= 0 {

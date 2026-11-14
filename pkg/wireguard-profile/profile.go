@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-// Package wgprofile converts a full-tunnel WireGuard configuration into an iOS
+// Package wgprofile converts a full-tunnel WireGuard configuration into a
 // connection profile understood by the VK TURN desktop client.
 package wgprofile
 
@@ -23,8 +23,8 @@ type Options struct {
 	UseSrtp     bool
 }
 
-// Build preserves WireGuard keys and produces the connection format used by
-// anton48/vk-turn-proxy-ios. PeerAddress overrides the configuration's Endpoint.
+// Build preserves WireGuard keys and produces a connection profile.
+// PeerAddress overrides the configuration's Endpoint.
 func Build(o Options) ([]byte, error) {
 	values, err := parseConfig(o.Config)
 	if err != nil {

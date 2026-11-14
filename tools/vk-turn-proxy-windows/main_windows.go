@@ -114,7 +114,7 @@ func (a *application) fail(err error) {
 }
 
 func (a *application) openProfile() {
-	a.openConfigFile(a.profile, a.tr("Open connection profile or iOS backup"), "Profiles (*.json;*.txt)|*.json;*.txt|All files (*.*)|*.*")
+	a.openConfigFile(a.profile, a.tr("Open JSON connection profile"), "Profiles (*.json;*.txt)|*.json;*.txt|All files (*.*)|*.*")
 }
 
 func (a *application) openWireGuard() {

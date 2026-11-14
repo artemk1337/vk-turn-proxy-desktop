@@ -139,7 +139,7 @@ func (b *TURNBind) Close() error {
 	return nil
 }
 
-// SetMark is a no-op on iOS.
+// SetMark is a no-op because this bind uses the proxy transport.
 func (b *TURNBind) SetMark(mark uint32) error {
 	return nil
 }

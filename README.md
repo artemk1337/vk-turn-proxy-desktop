@@ -15,7 +15,7 @@ Approve the administrator prompt to manage the VPN tunnel.
 
 ## Connect
 
-1. Paste a `vkturnproxy://import?data=…` link in **Profile link**, or open a JSON profile or iOS backup. Plain JSON and Base64 are also accepted.
+1. Paste a `vkturnproxy://import?data=…` link in **Profile link**, or open a JSON profile. Plain JSON and Base64 are also accepted.
 2. Alternatively, open **WireGuard config**, load a `.conf` and enter a VK call invitation. Set the TURN address, usually `host:56000`, or leave it empty to use `Endpoint`. Select SRTP or DTLS to match your server.
 3. Click **Connect**. Use **Disconnect** to stop the tunnel.
 

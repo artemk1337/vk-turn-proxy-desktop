@@ -145,7 +145,7 @@ func TestActiveBackupServerIsSelectedAndExplicitChoiceWins(t *testing.T) {
 	}
 }
 
-func TestConnectionTransportFlagsFollowIOSPrecedence(t *testing.T) {
+func TestConnectionTransportFlagsFollowProfilePrecedence(t *testing.T) {
 	fields := srtpServer("Home")
 	fields["useWrap"] = true
 	b, err := parseProfile(connectionJSON(t, fields))

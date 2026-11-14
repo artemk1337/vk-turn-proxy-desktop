@@ -86,7 +86,7 @@ func (a *application) profileTab() TabPage {
 		Layout: VBox{Margins: Margins{Left: 18, Top: 20, Right: 18, Bottom: 18}, Spacing: 12},
 		Children: []Widget{
 			Label{Text: "Paste your connection link", Font: Font{Family: "Segoe UI", PointSize: 12, Bold: true}, TextColor: headingText},
-			Label{Text: "The link contains a Base64-encoded JSON profile. You can also open a JSON backup.", TextColor: mutedText},
+			Label{Text: "The link contains a Base64-encoded JSON profile. You can also open a JSON profile.", TextColor: mutedText},
 			TextEdit{AssignTo: &a.profile, MinSize: Size{Height: 140}, MaxSize: Size{Height: 160}, MaxLength: maxProfileSize, VScroll: true, Font: Font{Family: "Consolas", PointSize: 10}},
 			Composite{Layout: HBox{MarginsZero: true}, Children: []Widget{
 				PushButton{Text: "Open profile...", OnClicked: a.openProfile},
@@ -127,8 +127,8 @@ func (a *application) advancedTab() TabPage {
 		AssignTo: &a.advancedPage, Title: "Advanced",
 		Layout: VBox{Margins: Margins{Left: 18, Top: 20, Right: 18, Bottom: 18}, Spacing: 12},
 		Children: []Widget{
-			Label{Text: "Backup server", Font: Font{Family: "Segoe UI", PointSize: 12, Bold: true}, TextColor: headingText},
-			Label{Text: "Choose a server by name when importing a full iOS backup.", TextColor: mutedText},
+			Label{Text: "Server name", Font: Font{Family: "Segoe UI", PointSize: 12, Bold: true}, TextColor: headingText},
+			Label{Text: "Choose a server by name from a multi-server JSON profile.", TextColor: mutedText},
 			LineEdit{AssignTo: &a.server, CueBanner: "Use the active server"},
 			VSpacer{Size: 16},
 			Label{Text: "VK login", Font: Font{Family: "Segoe UI", PointSize: 12, Bold: true}, TextColor: headingText},

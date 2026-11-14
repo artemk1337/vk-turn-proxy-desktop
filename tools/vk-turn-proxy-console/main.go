@@ -1,24 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-// vk-turn-proxy-console — the app's native transport as a console client for
-// macOS, Linux and FreeBSD: WireGuard over DTLS-SRTP over VK's TURN relays to
-// our server (anton48/vk-turn-proxy, -srtp), with the default route and the
-// system DNS through the tunnel.
-//
-//	sudo ./vk-turn-proxy-console                    # vk-turn-proxy-console.json here
-//	sudo ./vk-turn-proxy-console -config ~/backup.json -server Home
-//	sudo ./vk-turn-proxy-console -default-route=false -route 192.0.2.10
-//	sudo ./vk-turn-proxy-console -cleanup           # after a crash: take the changes back
-//
-// The config is the app's full backup (config.go). The credentials are minted
-// by the proxy exactly as in the app — the VK Calls path and the automatic
-// captcha solver; the console has no WebView, so a captcha the solver cannot
-// pass is asked again every two minutes. -vk-cookie-file turns on the
-// authenticated (VKAuth) mode from a browser's cookies.txt.
-//
-// The proxy's own traffic stays off the tunnel by /32 routes via the physical
-// gateway made when each destination is dialled (pins.go); every change to the
-// system is journaled with its undo before it is made (state.go).
+// vk-turn-proxy-console carries WireGuard traffic through VK TURN relays.
+// It runs standalone or as the desktop GUI backend. Network changes are
+// journaled before applying them and restored during normal shutdown.
 package main
 
 import (
@@ -75,26 +59,26 @@ type options struct {
 func parseFlags(args []string) (*options, error) {
 	o := &options{set: map[string]bool{}}
 	fs := flag.NewFlagSet("vk-turn-proxy-console", flag.ContinueOnError)
-	fs.StringVar(&o.configPath, "config", "vk-turn-proxy-console.json", "iOS connection link, connection JSON, or full backup file")
+	fs.StringVar(&o.configPath, "config", "vk-turn-proxy-console.json", "connection link, JSON profile, or multi-server JSON file")
 	fs.BoolVar(&o.wizard, "wizard", false, "set up a connection step by step")
 	fs.StringVar(&o.language, "lang", "", "setup wizard language: en or ru")
-	fs.StringVar(&o.serverName, "server", "", "the server's NAME in the backup (default: the active compatible server)")
-	fs.BoolVar(&o.list, "list", false, "list the backup's servers and exit")
+	fs.StringVar(&o.serverName, "server", "", "the server's NAME in the profile (default: the active compatible server)")
+	fs.BoolVar(&o.list, "list", false, "list the profile's servers and exit")
 	fs.StringVar(&o.peer, "peer", "", "override the server's address (host:port of its SRTP or DTLS listener)")
 	fs.IntVar(&o.conns, "conns", 0, fmt.Sprintf("connections (TURN allocations), 1…%d; default: the server's own (30 when it has none)", maxConns))
 	fs.IntVar(&o.poolReserve, "pool-reserve", 1, "reserve credential sets: the pool holds (1 + R) × ceil(conns/10) identities; one set rides a network change without a mint, 3 is the app's layout")
 	fs.StringVar(&o.turnTransport, "turn-transport", "", "tcp or udp to the VK relay (default: the server's setting; the app ships tcp)")
-	fs.IntVar(&o.mtu, "mtu", 0, "tunnel MTU (default: the backup's; 1280 when automatic)")
+	fs.IntVar(&o.mtu, "mtu", 0, "tunnel MTU (default: the profile's; 1280 when automatic)")
 	fs.StringVar(&o.dns, "dns", "", "DNS while the default route is in the tunnel: a comma-separated list replacing the server's dnsServers, or false to leave the system's alone")
-	fs.IntVar(&o.uplinkPace, "uplink-pace", -1, "uplink pacer, KiB/s per connection (0 = off; default: the backup's; 247 is the measured knee)")
-	fs.StringVar(&o.vkLink, "vk-link", "", "a VK call link replacing the backup's list")
+	fs.IntVar(&o.uplinkPace, "uplink-pace", -1, "uplink pacer, KiB/s per connection (0 = off; default: the profile's; 247 is the measured knee)")
+	fs.StringVar(&o.vkLink, "vk-link", "", "a VK call link replacing the profile's list")
 	fs.StringVar(&o.turnServer, "turn-server", "", "override the TURN relays: host:port[:quota[:pace]] entries, comma-separated (the server's turnServerOverride; the quota is the relay's limit, 0 = none — every connection on it while it answers; the pace is the relay's pace in KiB/s in both directions, 0 = no pacer, absent = -uplink-pace and the server's -downlink-pace), $vkurls among them standing for VK's own relays in its place; tried in order, a relay that stops answering is marked and the next one taken")
 	fs.BoolVar(&o.defaultRoute, "default-route", true, "send everything through the tunnel (false: only the tunnel's subnet and -route)")
 	fs.DurationVar(&o.defaultRouteWait, "default-route-wait", 2*time.Second, "after the first WireGuard handshake, wait this long for every connection before moving the default route anyway")
 	fs.BoolVar(&o.blockIPv6, "block-ipv6", false, "send IPv6 into the tunnel too, where it is dropped (the tunnel carries IPv4 only; without it IPv6 goes around the tunnel)")
 	fs.StringVar(&o.keepHosts, "keep-hosts", "", "comma-separated hosts that stay on the physical path (the SSH client is kept by itself)")
 	fs.StringVar(&o.route, "route", "", "-default-route=false: comma-separated hosts routed into the tunnel")
-	fs.StringVar(&o.credCache, "cred-cache", defaultCredCache, "the console's own TURN credential cache (never the backup's)")
+	fs.StringVar(&o.credCache, "cred-cache", defaultCredCache, "the console's own TURN credential cache (never the profile's)")
 	fs.StringVar(&o.stateFile, "state-file", defaultStateFile, "where the changes to the system are journaled with their undo")
 	fs.BoolVar(&o.cleanup, "cleanup", false, "take back what a crashed run left (the state file) and exit")
 	fs.StringVar(&o.pidFile, "pid-file", defaultPidFile, "the pid file: the running console keeps it locked, and a second one — a run or a -cleanup — is refused")
@@ -305,7 +289,7 @@ func realMain(args []string) int {
 			log.Printf("VK login from %s, valid until %s", o.cookieFile, exp.Format("2006-01-02"))
 		}
 	} else if st.VKAuth {
-		log.Printf("the backup has the VK login (vkAuth) on and the console has no login of its own: give -vk-cookie-file <cookies.txt> exported from a browser logged in to VK")
+		log.Printf("this profile requires VK cookies: use -vk-cookie-file <cookies.txt>")
 		return 2
 	}
 	if err := requireRoot(); err != nil {

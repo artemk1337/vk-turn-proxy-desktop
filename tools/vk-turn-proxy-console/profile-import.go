@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-// parseProfile accepts the iOS app's full backup, connection JSON, connection
+// parseProfile accepts a multi-server JSON file, connection JSON, connection
 // URL, or the bare base64 payload copied from a connection URL.
 func parseProfile(raw []byte) (*backupFile, error) {
 	text := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(raw)), "\ufeff"))
@@ -50,7 +50,7 @@ func parseProfile(raw []byte) (*backupFile, error) {
 			return nil, errors.New("a connection profile must contain one server in settings")
 		}
 		s := &b.Settings.backupServer
-		// The iOS importer treats the five transport flags as one enum.
+		// The connection format treats the five transport flags as one enum.
 		// An explicit flag set replaces the defaults for the entire set.
 		if s.UseSrtp != nil || s.UseWrap != nil || s.UseWrapA != nil || s.UseWrapS != nil || s.UseCsqtt != nil {
 			useCsqtt := boolOr(s.UseCsqtt, false)
@@ -129,7 +129,7 @@ func decodeConnectionBase64(text string) ([]byte, error) {
 }
 
 // selectedServer follows an explicitly requested name, then the active server
-// saved by iOS, then the first compatible server for older backups.
+// saved in the profile, then the first compatible server for older backups.
 func (b *backupFile) selectedServer(name string) (server, error) {
 	if name == "" && b.Settings.ActiveServer != nil {
 		active := *b.Settings.ActiveServer

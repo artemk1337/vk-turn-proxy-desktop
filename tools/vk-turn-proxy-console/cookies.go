@@ -2,16 +2,9 @@
 
 package main
 
-// -vk-cookie-file: a VK login exported from a browser as Netscape cookies.txt
-// (the format curl and the "cookies.txt" browser extensions write) turns on the
-// authenticated (VKAuth) mode — the console's analogue of the app's VK login
-// WebView, which the console has none of.
-//
-// The app sends VK exactly two cookies, "remixsid=…; p=…" (VKAuthWebView.swift):
-// remixsid of .vk.com or .vk.ru, p of .login.vk.com or .login.vk.ru. The file
-// may hold a browser's whole jar; only those two are taken, the freshest of
-// each. 🚫 Nothing of a cookie's value is ever printed — not in an error, not
-// for a malformed line.
+// Cookie imports accept Netscape files and Cookie headers. Authentication uses
+// remixsid from vk.com or vk.ru and p from login.vk.com or login.vk.ru.
+// Only the freshest valid pair is sent. Never include cookie values in errors.
 
 import (
 	"bufio"

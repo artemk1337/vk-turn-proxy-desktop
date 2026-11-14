@@ -37,16 +37,9 @@ import (
 // captchaPowProfile stores the browser profile for the current PoW session.
 var captchaPowProfile BrowserProfile
 
-// VKBrowserProfile is a captured-from-real-browser fingerprint reused in
-// the auto-PoW solver to evade VK's bot detection. The Swift main app's
-// CaptchaWKWebView intercepts captchaNotRobot.componentDone request bodies
-// (where a real browser sends VK its computed device + browser_fp) and
-// persists them to App Group vk_profile.json. Subsequent solveCaptchaPoW
-// calls — in either main app or extension process — load this file and
-// substitute the captured values for the generated ones, dramatically
-// improving the auto-solve success rate (observed 6% with generated
-// browser_fp, vpn.wifi.0.log 2026-05-08; expected to climb sharply with
-// real captured values per Moroka8 PR #162 commit b9642c6).
+// VKBrowserProfile stores captured browser fingerprint values for reuse
+// in captcha requests. The configured profile file can supply these values
+// instead of generating them for each solve attempt.
 //
 // The captured Device is the form-encoded value from VK's request body
 // (already URL-encoded JSON); BrowserFp is the encoded fingerprint
@@ -56,24 +49,15 @@ type VKBrowserProfile struct {
 	Device    string  `json:"device"`
 	BrowserFp string  `json:"browser_fp"`
 	UserAgent string  `json:"user_agent"`
-	// CapturedAt is unix seconds with sub-second fraction. Stored as
-	// float64 because Swift writes TimeInterval (Double) and Go's
-	// json.Unmarshal won't coerce a float into int64. Match Swift's
-	// type to keep the round-trip lossless.
+	// CapturedAt preserves fractional Unix seconds in saved profiles.
 	CapturedAt float64 `json:"captured_at"`
 }
 
-// vkProfilePath holds the App Group container path to vk_profile.json.
-// Set via SetVKProfilePath from bridge.go's wgSetLogFilePath. Read by
-// loadSavedVKProfile on every solveCaptchaPoW call (no caching — the
-// file is small, reading once per captcha attempt is negligible, and
-// cache invalidation gets messy).
+// vkProfilePath holds the optional browser profile file path.
+// loadSavedVKProfile reads it on every solve attempt so updates apply immediately.
 var vkProfilePath atomic.Value // string
 
-// SetVKProfilePath records where vk_profile.json lives in the App Group
-// container. Empty string disables loading (loadSavedVKProfile returns
-// nil silently). Called once during bridge init for both main app and
-// extension processes.
+// SetVKProfilePath sets the browser profile path. Empty disables loading.
 func SetVKProfilePath(p string) {
 	vkProfilePath.Store(p)
 }
@@ -95,7 +79,7 @@ func loadSavedVKProfile() *VKBrowserProfile {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		// ENOENT is normal (no captured profile yet); other errors
-		// suggest something wrong with App Group container access.
+		// indicate a profile file access problem.
 		if !os.IsNotExist(err) {
 			log.Printf("pow: vk_profile.json read failed: %v", err)
 		}
@@ -152,7 +136,7 @@ func randomHex(n int) string {
 // + desktop UA + sec-ch-ua, see go_client/{profiles,captcha_v2}.go) — gets VK
 // to serve a SOLVABLE Go-slider. This mode lets tools/captcha_test reproduce
 // amurcanov's presentation to test whether browser identity is the
-// discriminator. Production iOS (env unset) is unchanged.
+// discriminator. An unset environment variable keeps the default profile.
 var (
 	desktopChromeOnce sync.Once
 	desktopChromeProf *BrowserProfile
@@ -544,7 +528,7 @@ func vkDiagDialer() net.Dialer {
 	return net.Dialer{
 		Control: func(network, address string, c syscall.RawConn) error {
 			log.Printf("vk-dial: requesting %s %s", network, address)
-			return dialControl(network, address, c) // the console's pin; nothing on iOS (dialhook.go)
+			return dialControl(network, address, c) // pins proxy traffic to the physical gateway (dialhook.go)
 		},
 	}
 }
@@ -1382,7 +1366,7 @@ var (
 )
 
 // 5-minute captcha solver throttle was introduced in builds 106 (per-process)
-// and 107 (cross-process via App Group shared file) to protect VK's per-IP
+// and 107 (cross-process via a shared file) to protect VK's per-IP
 // rate-limit budget from credPool grower retry-storms. Removed in build 108
 // after empirical verification proved the underlying HTTP-layer mimicry
 // approach (Phase 11) is dead — Mac and FreeBSD VPS standalone runs of the

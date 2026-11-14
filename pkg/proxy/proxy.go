@@ -48,13 +48,9 @@ type Config struct {
 	// credentials so the first conn establishes immediately without
 	// hitting VK's API. Used by the pre-bootstrap captcha flow.
 	SeededTURN *TURNCreds
-	// CredCachePath is the on-disk JSON file the credPool uses to persist
-	// fetched credentials across extension launches. Empty disables
-	// persistence. Typically set to "<App Group container>/creds-pool.json"
-	// alongside the log file. Cred contents are session tokens with ~8h
-	// validity, so the file becomes useful for short-cycle reconnects
-	// (user toggling VPN, iOS killing the extension and respawning) but
-	// expires naturally on its own clock without active cleanup.
+	// CredCachePath persists TURN credentials across client launches.
+	// Empty disables persistence. The caller protects the file, which contains
+	// session tokens with approximately eight hours of validity.
 	CredCachePath string
 
 	// UplinkSynthMbit and UplinkSynthSec drive the paced synthetic uplink in
@@ -174,10 +170,10 @@ type Stats struct {
 	CredPoolDistinctRelays int32   `json:"cred_pool_distinct_relays"`   // distinct TURN relay addresses held across filled slots (4th "Pool" number)
 	CredPoolQuotaRefusals  int64   `json:"cred_pool_quota_refusals"`    // 486s the pool was told of this session, both transports (quotabreaker.go) — the app shows a box once it is non-zero
 	CredPoolMintPausedSec  int32   `json:"cred_pool_mint_paused_sec"`   // seconds left of the relay-refusal breaker's mint pause; 0 = minting allowed
-	TunnelUptimeSec        int64   `json:"tunnel_uptime_sec"`           // seconds since the proxy instance was created — the iOS UI uses this to render Uptime independent of main-app lifecycle (resists jetsam-respawn of the main app while extension keeps running)
+	TunnelUptimeSec        int64   `json:"tunnel_uptime_sec"`           // seconds since the proxy instance was created
 	CaptchaImageURL        string  `json:"captcha_image_url,omitempty"` // non-empty when captcha is pending
 	CaptchaSID             string  `json:"captcha_sid,omitempty"`       // captcha_sid for the pending captcha
-	AuthError              string  `json:"auth_error,omitempty"`        // non-empty when cookie (VKAuth) auth hit an unrecoverable rejection — the iOS app shows it + stops the tunnel
+	AuthError              string  `json:"auth_error,omitempty"`        // non-empty when cookie authentication hit an unrecoverable rejection
 }
 
 // Proxy manages the DTLS+TURN tunnel to the peer server.
@@ -268,7 +264,7 @@ type Proxy struct {
 	// HKDF obfuscation key (nil unless UseWrapA). The provision is the
 	// server-minted WireGuard config from GETCONF, populated exactly once by
 	// the first runWrapASession (wrapAProvOnce) and broadcast to waiters
-	// (bridge → Swift) by closing wrapAProvCh. wrapAProvCh is nil unless
+	// by closing wrapAProvCh. wrapAProvCh is nil unless
 	// UseWrapA.
 	wrapAKey      []byte
 	wrapAProvOnce sync.Once
@@ -400,18 +396,8 @@ type Proxy struct {
 	dtlsHSns    atomic.Int64 // nanoseconds
 	reconnects  atomic.Int64
 
-	// startedAt is the wall-clock moment NewProxy was called. The Stats
-	// getter computes TunnelUptimeSec relative to this so the iOS UI
-	// can show a tunnel-side uptime that survives main-app process
-	// lifecycle. Without it, the StatsView clock origin had to be
-	// stamped in TunnelManager.observeStatus when the app first
-	// attached, and got reset every time iOS jetsam'd the main app and
-	// re-launched it on next foreground — Uptime would jump back to
-	// "0:07" after a 40-min connected session because that was the
-	// time since the *app* re-attached, not since the tunnel started.
-	// Reporting the real uptime from this side moves the source of
-	// truth into the extension, which has the same lifecycle as the
-	// tunnel itself.
+	// startedAt is the proxy creation time. Stats reports uptime from this
+	// timestamp so reconnecting UI clients see the tunnel's actual lifetime.
 	startedAt time.Time
 
 	// Per-conn liveness probe. Detects "zombie" conns where the TURN
@@ -536,8 +522,8 @@ type Proxy struct {
 	// with nil from runConnection), or (b) Start() hits a fatal non-captcha
 	// error before any conn comes up. Captcha-pending does NOT signal — the
 	// caller waits up to timeout for the user to solve and the first conn to
-	// come up after Resume(). Used by bridge's wgWaitBootstrapReady so Swift
-	// can defer setTunnelNetworkSettings until VK bootstrap is actually done.
+	// come up after Resume(). Callers can defer network setup until bootstrap
+	// completes.
 	bootstrapDoneCh   chan error
 	bootstrapDoneOnce sync.Once
 	// firstSessionUp is set when the first session ever carried traffic
@@ -629,7 +615,7 @@ func NewProxy(cfg Config) *Proxy {
 		p.wrapAProvCh = make(chan struct{})
 	}
 	// If no external solver provided, use the built-in channel-based solver
-	// that waits for SolveCaptcha() to be called (e.g. from iOS UI).
+	// that waits for the client to call SolveCaptcha().
 	if p.config.CaptchaSolver == nil {
 		p.config.CaptchaSolver = p.waitForCaptchaAnswer
 	}
@@ -754,7 +740,7 @@ func (p *Proxy) Start() error {
 	applyGOMAXPROCS(p.config.GOMAXPROCS)
 
 	// p.linkID is fixed in NewProxy (parseVKLinkID) and never written here:
-	// RefreshCaptchaURL reads it on Swift's thread with no ordering against
+	// RefreshCaptchaURL reads it concurrently with
 	// this goroutine, so it must be immutable once the Proxy exists.
 
 	// Resolve peer address
@@ -994,8 +980,7 @@ func (p *Proxy) startConnections() error {
 	//
 	// Rationale: pre-build-137 was maxBootstrapAttempts=4 with fixed
 	// 10s backoff = ~60s total. When network outages last >60s (e.g.
-	// 2026-05-26 02:21-02:35 ~14 min ISP/route flap on user's WiFi
-	// — see progress_summary_may_25_2026 evening notes / open issue),
+	// a sustained ISP or route flap),
 	// the 60s budget exhausts and we wait for watchdog Condition 3
 	// to fire after 5 min of zero active conns, giving 5-6 min total
 	// dead-window per cycle. The 4-min budget here covers most
@@ -1856,7 +1841,7 @@ func (p *Proxy) waitForCaptchaAnswer(imageURL string) (string, error) {
 }
 
 // SolveCaptcha provides the answer to a pending captcha challenge.
-// Called from the iOS UI via the bridge.
+// Callers supply the answer from the interactive captcha flow.
 func (p *Proxy) SolveCaptcha(answer string) {
 	if answer != "" {
 		p.lastCaptchaKey.Store(answer)
@@ -1884,7 +1869,7 @@ func (p *Proxy) SolveCaptcha(answer string) {
 }
 
 // RefreshCaptchaURL makes a fresh step2 VK API call to get a new captcha URL.
-// Called from Swift right before showing WebView, so the URL is guaranteed fresh.
+// Call immediately before showing the captcha WebView to use a fresh URL.
 // Returns the new redirect_uri or empty string on failure.
 func (p *Proxy) RefreshCaptchaURL() string {
 	log.Printf("proxy: refreshing captcha URL for WebView")
@@ -2748,7 +2733,6 @@ func (p *Proxy) runDTLSSession(sessCtx context.Context, linkID string, readyCh c
 				//     means slots are far less likely to be on cooldown
 				//     when a kill arrives.
 				// The captcha-during-broken-tunnel issue is still real
-				// (see feedback_ios_routing.md), but
 				// the recovery path now has more headroom: with TTL 4h
 				// the spare slot+1 is usually fresh, so 10/30 conns
 				// recover instantly on the spare cred without needing a
@@ -3450,8 +3434,8 @@ func (p *Proxy) storeWrapAProvision(prov *WrapAProvision) {
 
 // WaitWrapAProvision blocks until WRAP-A GETCONF provisioning has produced the
 // server-minted WireGuard config, the proxy stopped, or the timeout expired.
-// The bridge calls this after WaitBootstrap to build the WG UAPI + iOS network
-// settings from server-provided crypto.
+// Callers use the result after WaitBootstrap to configure WireGuard and
+// the tunnel interface.
 func (p *Proxy) WaitWrapAProvision(timeout time.Duration) (*WrapAProvision, error) {
 	if p.wrapAProvCh == nil {
 		return nil, fmt.Errorf("WRAP-A not enabled")
@@ -4477,7 +4461,7 @@ func pathSnapshotOSDefault() string {
 // both buckets so the in-sync count reflects active state, not history.
 // LogPathSnapshot emits one pathstats log line on demand. Same format
 // as the periodic logPathStatsLoop but callable from anywhere — used
-// by wgLogPathSnapshot bridge so Swift's NWPathMonitor can dump a
+// by network monitoring code to dump a
 // snapshot at the moment of every path transition, not just on the
 // 60s tick. Without this, transient interfaces visited during quick
 // wifi-lte-wifi handovers are invisible in the pathstats stream
@@ -4486,8 +4470,8 @@ func pathSnapshotOSDefault() string {
 //
 // Safe to call concurrently with logPathStatsLoop; both just emit
 // log lines, no shared mutable state.
-// OnPathChange is called from Swift's NWPathMonitor on every real (deduped)
-// network-path transition. Forwards to credPool which marks in-use slots
+// OnPathChange handles a deduplicated network-path transition.
+// It forwards to credPool, which marks in-use slots
 // as pre-emptively saturated. See credPool.MarkInUseSlotsForPathChange
 // for the full rationale.
 func (p *Proxy) OnPathChange() {
@@ -4499,7 +4483,7 @@ func (p *Proxy) OnPathChange() {
 	}
 }
 
-// OnPathTransition is called from Swift's NWPathMonitor when a satisfied
+// OnPathTransition handles a satisfied
 // path event arrives with iface=other (recursive routing fallback —
 // typically our own TUN device becoming os-default during the brief gap
 // between physical interface changes). Unlike OnPathChange, this does

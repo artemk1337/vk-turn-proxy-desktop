@@ -7,9 +7,7 @@ package main
 // wireguard-go reads a keypair's age with time.Since — Go's monotonic clock —
 // and with the stock Go runtime that clock stands still while the machine
 // sleeps (mach_absolute_time on macOS; Linux's CLOCK_MONOTONIC leaves suspend
-// out too). The app never meets this: its bridge is built with a runtime
-// patched to count sleep (WireGuardBridge/goruntime-boottime-over-monotonic.diff);
-// the console's binaries are built with the toolchain as it ships.
+// out too). The console binaries use the stock Go toolchain.
 //
 // So after a sleep WireGuard takes its key for as young as it was when the
 // lid closed and goes on sending with it, while the server — whose clock ran —

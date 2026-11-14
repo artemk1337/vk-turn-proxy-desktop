@@ -100,10 +100,8 @@ func (r *pathRestart) pathUp() int64 {
 func (p *Proxy) OnPathUp() {
 	p.rotateGroupHello()
 	// 🚨 Before the first session ever came up there is nothing to move to a
-	// new group — and the tunnel's OWN start report can land here: NWPath-
-	// Monitor's initial "satisfied" reaches Go in a minority of starts (a
-	// race with Swift's backend assignment), 1.5 s before conn 0 on the seeded
-	// path (harmless: "restarting 0 session(s)") but DURING conn 0's bootstrap
+	// new group. An initial network notification can arrive before conn 0
+	// starts on a seeded path, or during conn 0's bootstrap
 	// handshake on the unseeded one, where the settle timer would cancel that
 	// attempt and cost a re-dial (≤ ~1 s and one allocate/deallocate pair —
 	// never observed: every archived start is seeded). The hello still rotates

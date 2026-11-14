@@ -2,23 +2,11 @@
 
 package main
 
-// The config accepts the iOS app's full backup or connection profile JSON,
-// a vkturnproxy:// URL, or its base64 payload. Use -config <path> for a file
-// containing any of these formats. Backup settings carry servers, call links
-// and global preferences.
-//
-// 🚫 What it deliberately does NOT read:
-//   - turn_pool — the app's cached TURN credentials. The console keeps its
-//     own cache (-cred-cache): an identity used by the phone and the console at
-//     once would share one allocation quota, and the two pools would evict
-//     each other's seats.
-//   - vk_profile — the phone WebView's captured browser fingerprint. The
-//     console's captcha solver generates its own: one fingerprint on two
-//     devices would link them at VK.
-//
-// The server is selected by name, the active backup profile, or the first
-// supported native SRTP / legacy DTLS+WG profile. Absent keys take the
-// app's defaults (ServerProfile.swift), the way the app itself decodes them.
+// Configuration accepts connection JSON, multi-server JSON, a vkturnproxy URL
+// or its Base64 payload. Select a server by name, active selection, or the first
+// compatible SRTP/DTLS entry. Optional settings use the defaults below.
+// Imported TURN caches and browser fingerprints are ignored to avoid sharing
+// allocation quotas and browser identities across devices.
 
 import (
 	"encoding/base64"
@@ -74,7 +62,7 @@ type backupServer struct {
 	UseCsqtt                *bool   `json:"useCsqtt"`
 }
 
-// server is a backup server with the app's defaults applied.
+// server is a profile entry with defaults applied.
 type server struct {
 	Name                                    string
 	PrivateKey, PeerPublicKey, PresharedKey string
@@ -88,7 +76,7 @@ type server struct {
 	UseCsqtt                                bool
 }
 
-// The app's defaults for a key a server does not carry (ServerProfile.swift).
+// Defaults for optional profile settings.
 const (
 	defaultTunnelAddress = "192.168.102.3/24"
 	defaultDNSServers    = "1.1.1.1"
@@ -139,7 +127,7 @@ func (b backupServer) withDefaults() server {
 	}
 }
 
-// mode is the app's label for the server's transport (ServerProfile.modeLabel).
+// mode labels the server's transport.
 func (s server) mode() string {
 	switch {
 	case s.UseCsqtt:
@@ -187,7 +175,7 @@ func (b *backupFile) servers() []server {
 // selectServer picks the requested name or the first supported server.
 func selectServer(list []server, name string) (server, error) {
 	if len(list) == 0 {
-		return server{}, errors.New("the backup holds no servers")
+		return server{}, errors.New("the profile holds no servers")
 	}
 	if name != "" {
 		match := -1
@@ -208,7 +196,7 @@ func selectServer(list []server, name string) (server, error) {
 			}
 		}
 		if match < 0 {
-			return server{}, fmt.Errorf("no server named %q in the backup (servers: %s)", name, serverNames(list))
+			return server{}, fmt.Errorf("no server named %q in the profile (servers: %s)", name, serverNames(list))
 		}
 		if s := list[match]; !s.native() {
 			return server{}, fmt.Errorf("server %q is %s; the client supports native SRTP and legacy DTLS+WG", s.Name, s.mode())
@@ -220,7 +208,7 @@ func selectServer(list []server, name string) (server, error) {
 			return s, nil
 		}
 	}
-	return server{}, fmt.Errorf("the backup has no supported native SRTP or legacy DTLS+WG server (servers: %s)", serverNames(list))
+	return server{}, fmt.Errorf("the profile has no supported native SRTP or legacy DTLS+WG server (servers: %s)", serverNames(list))
 }
 
 func serverNames(list []server) string {
@@ -252,7 +240,7 @@ type settings struct {
 	ForceLegacyCaptcha                      bool
 }
 
-// The tunnel MTU rule of the app (TunnelMTU.swift): 0 is automatic = 1280,
+// The tunnel MTU rule: 0 is automatic = 1280,
 // anything else clamped to 1000…1400.
 const (
 	mtuStandard = 1280
@@ -267,7 +255,7 @@ func resolveMTU(stored int) int {
 	return min(max(stored, mtuMinimum), mtuMaximum)
 }
 
-// splitLinks is the app's reading of vkLink: one link per line, blanks dropped.
+// splitLinks reads one vkLink per line and drops blank lines.
 func splitLinks(s string) []string {
 	var out []string
 	for _, l := range strings.Split(s, "\n") {
@@ -320,7 +308,7 @@ func buildSettings(b *backupFile, s server) settings {
 	return st
 }
 
-// maxConns is the console's ceiling; the app's 60 is Swift's (ServerEditView,
+// maxConns is the console's ceiling; the GUI's 60 is the profile editor's (
 // TunnelManager) and the Go side has none. Above ~60 on one relay host the
 // open N=60 blackhole may bite — «проверим на практике».
 const maxConns = 120
@@ -352,7 +340,7 @@ func (st settings) validate() error {
 		return fmt.Errorf("%d connections: the console carries 1…%d", st.NumConns, maxConns)
 	}
 	if len(st.VKLinks) == 0 {
-		return errors.New("the backup has no VK call link (settings.vkLink) — the credentials are minted from it")
+		return errors.New("the profile has no VK call link (settings.vkLink) — the credentials are minted from it")
 	}
 	return nil
 }

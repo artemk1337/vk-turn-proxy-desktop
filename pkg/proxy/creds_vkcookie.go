@@ -35,11 +35,7 @@ import (
 //            → okcdn auth.anonymLogin (session_data carries auth_token) → session_key
 //            → okcdn vchat.joinConversationByLink (session_key, NO anonymToken) → turn_server
 //
-// Default OFF — gated by SetVKCookieAuth(true, "remixsid=…") from the bridge,
-// which the iOS app sets only when the user enables cookie auth in Settings
-// and a harvested cookie is present. This trades anonymity for connectivity
-// (see project_vk_turn_proxy_ios.md / progress_june_24_2026…). NOT for the
-// default anonymous flow.
+// Enabled through SetVKCookieAuth with the account's cookies and call links.
 
 const (
 	vkCookieAppID      = "6287487" // VK_WEB app_id (same as the legacy mint apps)
@@ -56,8 +52,7 @@ const (
 	vkCookieHost = "vk.ru"
 )
 
-// Package-level cookie-auth state, set from the bridge (mirrors the
-// forceLegacyCaptcha pattern). GetVKCreds consults these on fresh fetches.
+// Package-level cookie-auth state. GetVKCreds consults it on fresh fetches.
 var (
 	cookieAuthEnabled atomic.Bool
 	cookieHeaderStore atomic.Value // string — the raw Cookie header, e.g. "remixsid=…"
@@ -97,13 +92,13 @@ type cookieRelayRef struct {
 // ErrCookieRejected signals that the logged-in cookie is no longer accepted by
 // VK (expired, invalidated, or incomplete) — re-login is required. It is
 // distinct from a transient network error: GetVKCreds latches it into the
-// cookie-auth fatal state (surfaced via Stats.AuthError) so the extension can
+// cookie-auth fatal state (surfaced via Stats.AuthError) so the client can
 // stop the tunnel with a clear message instead of spinning on a dead cookie.
 var ErrCookieRejected = errors.New("vk cookie rejected: expired/invalid/incomplete (re-login required)")
 
 // SetVKCookieAuth enables/disables the cookie (logged-in) cred path and sets
 // the Cookie header + the call links (one per relay-cluster — see
-// cookieCredForSlot). Called from bridge.go (wgSetVKCookieAuth). Clears any
+// cookieCredForSlot). Clears any
 // prior fatal latch + the per-link mint cache — a (re)configure means the app
 // supplied a fresh cookie / changed mode / changed the link set.
 func SetVKCookieAuth(enabled bool, cookieHeader string, links []string) {
@@ -416,7 +411,7 @@ func vkCookieHeader() string {
 }
 
 // setCookieAuthFatal / clearCookieAuthFatal / CookieAuthFatalError manage the
-// "cookie is dead" latch that the iOS app reads via Stats.AuthError.
+// rejected-cookie latch exposed through Stats.AuthError.
 func setCookieAuthFatal(msg string) { cookieAuthFatal.Store(msg) }
 
 func clearCookieAuthFatal() { cookieAuthFatal.Store("") }

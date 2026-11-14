@@ -1,32 +1,9 @@
 package proxy
 
-// CredPool — the app's credential pool as a standalone value.
-//
-// Stage-5 step 1 (2026-09-06): a second transport (csqtt, pkg/csqtt) must
-// mint, share, pace and cache VK TURN credentials by the SAME policy the
-// native transport does — one pool slot per ~10 connections (VK's quota is
-// per (identity, relay), see connsPerSlot), in cookie mode one slot per
-// relay (2 per call link, no 4× reserve — extra slots would duplicate a
-// relay and 486), the cold-start cap inside get(), the grower's
-// fast-then-staggered fill, the on-disk cache, the pre-bootstrap seed in
-// slot 0, cookie auth and the TURN override — without that transport living
-// inside Proxy. Proxy keeps building its own pool exactly as before
-// (NewProxy → newCredPool with p.fetchFreshCreds), and this wrapper reuses
-// the same credPool type with an injected fetcher.
-//
-// What the wrapper's fetcher does NOT carry is the captcha: the WebView round
-// trip keeps its tokens in Proxy fields, and every acquire here is
-// non-blocking (get(…, false) / tryFill(…, false)), so a captcha fails the
-// fetch with CaptchaRequiredError and the slot cools down — the transport
-// reports "authentication required". No solver is wired on this path by
-// design (a field that is never consulted would be a lie); stage-5 step D
-// (csqtt as a Proxy session mode) brings the app's captcha flow by
-// construction.
-//
-// The grower's state machine exists ONCE — credPool.growLoop below. Both
-// owners wait for their own readiness and run it: Proxy.growCredPool with the
-// captcha-pending predicate, Grow with none. A fix to the fill logic goes
-// there and nowhere else (TestBothGrowersRunTheOneLoop).
+// CredPool exposes the shared credential pool independently of Proxy.
+// It uses the same slot sizing, quota policy, cache and grow loop, with an
+// injected fetcher. A captcha-required response cools down the slot instead
+// of waiting for interactive input.
 
 import (
 	"context"
@@ -52,10 +29,8 @@ type CredPoolConfig struct {
 	TurnServer  string        // optional TURN host override (the older pair; TurnServers wins when set)
 	TurnPort    string        // optional TURN port override
 	TurnServers []string      // optional TURN relays, host:port each, or TURNServersVK for VK's own in its place — applied to EVERY credential when it is handed out, cached ones included (relayhealth.go)
-	// SeededTURN pre-fills slot 0 (the app's pre-bootstrap captcha flow hands
-	// it over), so the first acquire needs no VK call — without it the
-	// captcha lands inside iOS's .connecting window. The override applies to
-	// it as to every credential, when it is handed out (since 2026-10-19).
+	// SeededTURN pre-fills slot 0 so the first acquire needs no VK request.
+	// Relay overrides apply when the credential is handed out.
 	SeededTURN *TURNCreds
 	// Fetch replaces the standard VK fetcher (tests, or another minter). It
 	// must return ("host:port", creds, nil) with creds.Addresses non-empty.

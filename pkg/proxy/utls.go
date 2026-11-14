@@ -66,8 +66,7 @@ var (
 	vkHostIPs   = make(map[string][]string) // host (no port) → list of IPs (all A-records)
 )
 
-// SetVKHostIPs replaces the host→[]IP map. Called from bridge.go's
-// wgStartVKBootstrap when proxyConfig is unmarshalled.
+// SetVKHostIPs replaces the host-to-address map used for pinned VK requests.
 func SetVKHostIPs(m map[string][]string) {
 	vkHostIPsMu.Lock()
 	defer vkHostIPsMu.Unlock()
