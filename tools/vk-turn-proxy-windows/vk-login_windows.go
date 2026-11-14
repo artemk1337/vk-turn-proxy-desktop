@@ -224,6 +224,11 @@ func newVKLoginDialog(owner walk.Form, title, hintText, url string) (*vkLogin, e
 	if err != nil {
 		return fail(err)
 	}
+	// Walk excludes containers without a layout from their parent's layout.
+	// The WebView is a native child, but its host must still participate.
+	if err = login.browser.SetLayout(walk.NewVBoxLayout()); err != nil {
+		return fail(err)
+	}
 	login.browser.SetMinMaxSize(walk.Size{Width: 540, Height: 580}, walk.Size{})
 	layout.SetStretchFactor(login.browser, 1)
 	login.browser.SizeChanged().Attach(login.resize)

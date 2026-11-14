@@ -34,26 +34,49 @@ func (a *application) installNativeControlPainting() {
 	}
 }
 
+type darkFaceBinding struct {
+	app      *application
+	widget   walk.Widget
+	combo    bool
+	original uintptr
+}
+
+var darkFaces = make(map[win.HWND]darkFaceBinding)
+var darkFaceProc = syscall.NewCallback(func(hwnd win.HWND, msg uint32, wParam, lParam uintptr) uintptr {
+	binding, ok := darkFaces[hwnd]
+	if !ok {
+		return win.DefWindowProc(hwnd, msg, wParam, lParam)
+	}
+	a := binding.app
+	if a.preferences.Theme == "dark" && (msg == win.WM_CTLCOLORLISTBOX || msg == win.WM_CTLCOLORSTATIC || msg == win.WM_CTLCOLOREDIT) {
+		win.SetTextColor(win.HDC(wParam), win.COLORREF(a.palette.text))
+		win.SetBkColor(win.HDC(wParam), win.COLORREF(a.palette.input))
+		return uintptr(a.nativeInputBrush)
+	}
+	result := win.CallWindowProc(binding.original, hwnd, msg, wParam, lParam)
+	if a.preferences.Theme == "dark" {
+		switch msg {
+		case win.WM_PAINT:
+			a.paintDarkFace(binding.widget, binding.combo, 0)
+		case win.WM_PRINTCLIENT, win.WM_PRINT:
+			a.paintDarkFace(binding.widget, binding.combo, win.HDC(wParam))
+		}
+	}
+	return result
+})
+
 func (a *application) installDarkFace(widget walk.Widget, combo bool) {
-	original := win.GetWindowLongPtr(widget.Handle(), win.GWLP_WNDPROC)
-	callback := syscall.NewCallback(func(hwnd win.HWND, msg uint32, wParam, lParam uintptr) uintptr {
-		if a.preferences.Theme == "dark" && (msg == win.WM_CTLCOLORLISTBOX || msg == win.WM_CTLCOLORSTATIC || msg == win.WM_CTLCOLOREDIT) {
-			win.SetTextColor(win.HDC(wParam), win.COLORREF(a.palette.text))
-			win.SetBkColor(win.HDC(wParam), win.COLORREF(a.palette.input))
-			return uintptr(a.nativeInputBrush)
-		}
-		result := win.CallWindowProc(original, hwnd, msg, wParam, lParam)
-		if a.preferences.Theme == "dark" {
-			switch msg {
-			case win.WM_PAINT:
-				a.paintDarkFace(widget, combo, 0)
-			case win.WM_PRINTCLIENT, win.WM_PRINT:
-				a.paintDarkFace(widget, combo, win.HDC(wParam))
-			}
-		}
-		return result
+	hwnd := widget.Handle()
+	if _, exists := darkFaces[hwnd]; exists {
+		return
+	}
+	original := win.GetWindowLongPtr(hwnd, win.GWLP_WNDPROC)
+	darkFaces[hwnd] = darkFaceBinding{a, widget, combo, original}
+	win.SetWindowLongPtr(hwnd, win.GWLP_WNDPROC, darkFaceProc)
+	widget.Disposing().Attach(func() {
+		win.SetWindowLongPtr(hwnd, win.GWLP_WNDPROC, original)
+		delete(darkFaces, hwnd)
 	})
-	win.SetWindowLongPtr(widget.Handle(), win.GWLP_WNDPROC, callback)
 }
 
 func (a *application) paintDarkFace(widget walk.Widget, combo bool, dc win.HDC) {

@@ -3,7 +3,11 @@
 package main
 
 import (
+	"fmt"
+	"github.com/lxn/walk"
+	"image/png"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -102,10 +106,16 @@ func TestWebView2LoginCapturesHttpOnlyCookies(t *testing.T) {
 					}
 					bounds := login.browser.ClientBoundsPixels()
 					if bounds.Width < 400 || bounds.Height < 400 {
-						login.finishError(windows.ERROR_INVALID_WINDOW_HANDLE)
+						if directory := os.Getenv("VKTURN_UI_CAPTURE_DIR"); directory != "" {
+							_ = captureLoginWindow(dialog, filepath.Join(directory, "vk-login-layout-failure.png"))
+						}
+						login.finishError(fmt.Errorf("VK browser layout too small: browser=%+v dialog=%+v", bounds, dialog.ClientBoundsPixels()))
 						return
 					}
 					if !injected {
+						if directory := os.Getenv("VKTURN_UI_CAPTURE_DIR"); directory != "" {
+							_ = captureLoginWindow(dialog, filepath.Join(directory, "vk-login-browser.png"))
+						}
 						injected = true
 						for _, item := range [][3]string{{"remixsid", "fixture-session", ".vk.ru"}, {"p", "fixture-token", ".login.vk.ru"}} {
 							name, _ := windows.UTF16PtrFromString(item[0])
@@ -196,4 +206,37 @@ func TestDashboardVKButtonOpensLoginWindow(t *testing.T) {
 	if !opened {
 		t.Fatal("dashboard Sign in to VK button did not open the browser login window")
 	}
+}
+
+func captureLoginWindow(dialog *walk.Dialog, path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	bitmap, err := walk.NewBitmapForDPI(dialog.SizePixels(), dialog.DPI())
+	if err != nil {
+		return err
+	}
+	defer bitmap.Dispose()
+	canvas, err := walk.NewCanvasFromImage(bitmap)
+	if err != nil {
+		return err
+	}
+	result, _, printError := windows.NewLazySystemDLL("user32.dll").NewProc("PrintWindow").Call(uintptr(dialog.Handle()), uintptr(canvas.HDC()), 2)
+	canvas.Dispose()
+	if result == 0 {
+		return fmt.Errorf("capture VK login: %w", printError)
+	}
+	image, err := bitmap.ToImage()
+	if err != nil {
+		return err
+	}
+	for i := 3; i < len(image.Pix); i += 4 {
+		image.Pix[i] = 255
+	}
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	return png.Encode(file, image)
 }

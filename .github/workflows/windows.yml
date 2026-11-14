@@ -23,7 +23,7 @@ jobs:
         env:
           VKTURN_UI_CAPTURE_DIR: ${{ github.workspace }}/screenshots
           VKTURN_REQUIRE_WEBVIEW2_TEST: "1"
-        run: go test -count=1 ./tools/vk-turn-proxy-console ./tools/vk-turn-proxy-windows ./pkg/wireguard-profile ./pkg/proxy/srtpwrap ./pkg/turnbind
+        run: go test -count=1 ./tools/vk-turn-proxy-console ./tools/vk-turn-proxy-windows ./pkg/vk-auth ./pkg/wireguard-profile ./pkg/proxy/srtpwrap ./pkg/turnbind
       - name: Build desktop client
         id: desktop
         if: always()

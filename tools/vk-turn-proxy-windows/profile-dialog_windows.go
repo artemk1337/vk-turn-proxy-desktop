@@ -156,32 +156,51 @@ func (a *application) openProfileEditor(profile savedProfile) (savedProfile, boo
 var profileCues = map[win.HWND]profileCue{}
 
 type profileCue struct {
-	handle   win.HWND
 	original uintptr
 	brush    win.HBRUSH
 	palette  themePalette
+	font     win.HFONT
 }
 
 var profileCueProc = syscall.NewCallback(func(hwnd win.HWND, msg uint32, wParam, lParam uintptr) uintptr {
 	cue := profileCues[hwnd]
-	if msg == win.WM_CTLCOLORSTATIC && win.HWND(lParam) == cue.handle {
-		win.SetBkColor(win.HDC(wParam), win.COLORREF(cue.palette.input))
-		win.SetTextColor(win.HDC(wParam), win.COLORREF(cue.palette.muted))
-		return uintptr(cue.brush)
+	switch msg {
+	case win.WM_ERASEBKGND:
+		return 1
+	case win.WM_PAINT:
+		var ps win.PAINTSTRUCT
+		dc := win.BeginPaint(hwnd, &ps)
+		paintProfileCue(hwnd, dc, cue)
+		win.EndPaint(hwnd, &ps)
+		return 0
+	case win.WM_PRINTCLIENT:
+		paintProfileCue(hwnd, win.HDC(wParam), cue)
+		return 0
 	}
 	return win.CallWindowProc(cue.original, hwnd, msg, wParam, lParam)
 })
 
+func paintProfileCue(hwnd win.HWND, dc win.HDC, cue profileCue) {
+	var bounds win.RECT
+	win.GetClientRect(hwnd, &bounds)
+	fillNativeRect(dc, &bounds, cue.brush)
+	previous := win.SelectObject(dc, win.HGDIOBJ(cue.font))
+	defer win.SelectObject(dc, previous)
+	win.SetBkMode(dc, win.TRANSPARENT)
+	win.SetTextColor(dc, win.COLORREF(cue.palette.muted))
+	win.DrawTextEx(dc, windows.StringToUTF16Ptr("vkturnproxy://import?data=<base64 JSON>"), -1, &bounds, win.DT_LEFT|win.DT_TOP|win.DT_WORDBREAK|win.DT_NOPREFIX, nil)
+}
+
 func installProfileCue(edit *walk.TextEdit, palette themePalette) {
 	hwnd := edit.Handle()
-	child := win.CreateWindowEx(win.WS_EX_TRANSPARENT, windows.StringToUTF16Ptr("STATIC"), windows.StringToUTF16Ptr("vkturnproxy://import?data=<base64 JSON>"), win.WS_CHILD|win.WS_DISABLED|win.SS_LEFT|win.SS_NOPREFIX, 0, 0, 0, 0, hwnd, 0, 0, nil)
+	child := win.CreateWindowEx(0, windows.StringToUTF16Ptr("STATIC"), nil, win.WS_CHILD|win.WS_DISABLED|win.SS_LEFT|win.SS_NOPREFIX, 0, 0, 0, 0, hwnd, 0, 0, nil)
 	if child == 0 {
 		return
 	}
 	win.SendMessage(child, win.WM_SETFONT, win.SendMessage(hwnd, win.WM_GETFONT, 0, 0), 1)
-	cue := profileCue{handle: child, original: win.GetWindowLongPtr(hwnd, win.GWLP_WNDPROC), brush: nativeBrush(palette.input), palette: palette}
-	profileCues[hwnd] = cue
-	win.SetWindowLongPtr(hwnd, win.GWLP_WNDPROC, profileCueProc)
+	cue := profileCue{original: win.GetWindowLongPtr(child, win.GWLP_WNDPROC), brush: nativeBrush(palette.input), palette: palette, font: win.HFONT(win.SendMessage(hwnd, win.WM_GETFONT, 0, 0))}
+	profileCues[child] = cue
+	win.SetWindowLongPtr(child, win.GWLP_WNDPROC, profileCueProc)
 	update := func() {
 		bounds := edit.ClientBoundsPixels()
 		inset := edit.IntFrom96DPI(8)
@@ -195,8 +214,8 @@ func installProfileCue(edit *walk.TextEdit, palette themePalette) {
 	edit.TextChanged().Attach(update)
 	edit.SizeChanged().Attach(update)
 	edit.Disposing().Attach(func() {
-		win.SetWindowLongPtr(hwnd, win.GWLP_WNDPROC, cue.original)
-		delete(profileCues, hwnd)
+		win.SetWindowLongPtr(child, win.GWLP_WNDPROC, cue.original)
+		delete(profileCues, child)
 		win.DeleteObject(win.HGDIOBJ(cue.brush))
 	})
 	update()

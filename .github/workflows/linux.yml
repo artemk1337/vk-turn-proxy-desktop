@@ -20,7 +20,7 @@ jobs:
       - name: Install GTK test dependencies
         run: sudo apt-get update && sudo apt-get install -y python3-gi librsvg2-common gir1.2-gtk-3.0 gir1.2-webkit2-4.1 gir1.2-ayatanaappindicator3-0.1 xvfb xauth dbus-x11 iproute2 pkexec polkitd
       - name: Test console and shared transport
-        run: go test -race ./tools/vk-turn-proxy-console ./tools/vk-turn-proxy-windows ./pkg/wireguard-profile ./pkg/proxy/srtpwrap ./pkg/turnbind
+        run: go test -race ./tools/vk-turn-proxy-console ./tools/vk-turn-proxy-windows ./pkg/vk-auth ./pkg/wireguard-profile ./pkg/proxy/srtpwrap ./pkg/turnbind
       - name: Test Linux interface helpers
         run: /usr/bin/python3 -m unittest discover -s tools/vk-turn-proxy-linux -p '*_test.py'
       - name: Build terminal client

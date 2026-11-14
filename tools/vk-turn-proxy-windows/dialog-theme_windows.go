@@ -6,6 +6,7 @@ import (
 	"unsafe"
 
 	"github.com/lxn/walk"
+	"github.com/lxn/win"
 	"golang.org/x/sys/windows"
 )
 
@@ -29,6 +30,21 @@ func (a *application) themeDialog(dialog *walk.Dialog) {
 			brush = input
 		}
 		widget.SetBackground(brush)
+		switch control := widget.(type) {
+		case *walk.TextEdit, *walk.LineEdit:
+			style := win.GetWindowLongPtr(widget.Handle(), win.GWL_EXSTYLE)
+			if dark != 0 {
+				style &^= win.WS_EX_CLIENTEDGE
+			} else {
+				style |= win.WS_EX_CLIENTEDGE
+			}
+			win.SetWindowLongPtr(widget.Handle(), win.GWL_EXSTYLE, style)
+			win.SetWindowPos(widget.Handle(), 0, 0, 0, 0, 0, win.SWP_NOMOVE|win.SWP_NOSIZE|win.SWP_NOZORDER|win.SWP_NOACTIVATE|win.SWP_FRAMECHANGED)
+		case *walk.ComboBox:
+			a.installDarkFace(control, true)
+		case *walk.PushButton:
+			a.installDarkFace(control, false)
+		}
 		if text, ok := widget.(interface{ SetTextColor(walk.Color) }); ok {
 			text.SetTextColor(a.palette.text)
 		}
