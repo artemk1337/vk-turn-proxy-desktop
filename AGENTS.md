@@ -30,6 +30,7 @@ Journal network changes before applying them. Route VK and TURN traffic through 
 - Group entries under `Feature` and `Bugfix`. Use `Improvement` or `Breaking change` only when relevant. Omit empty groups.
 - Each entry names the change and briefly describes the user-visible result. Keep one change per entry. Avoid implementation history, build/test details and generic phrases such as "various improvements".
 - Use the same concise groups in GitHub release notes.
+- `.github/workflows/release-cleanup.yml` retains the five most recently published releases, including prereleases, and removes older releases with their assets. It runs on publication, daily and manually. Drafts and Git tags are preserved.
 
 ```markdown
 - Feature

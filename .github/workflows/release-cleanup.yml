@@ -1,0 +1,39 @@
+name: Keep five latest releases
+
+on:
+  release:
+    types: [published]
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              ...context.repo,
+              per_page: 100,
+            });
+            const published = releases
+              .filter(release => !release.draft && release.published_at)
+              .sort((a, b) => Date.parse(b.published_at) - Date.parse(a.published_at) || b.id - a.id);
+
+            for (const release of published.slice(5)) {
+              await github.rest.repos.deleteRelease({
+                ...context.repo,
+                release_id: release.id,
+              });
+              core.info(`Deleted release ${release.tag_name}`);
+            }
+            core.info(`Retained ${Math.min(published.length, 5)} published releases`);
