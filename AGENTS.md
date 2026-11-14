@@ -27,14 +27,7 @@ Journal network changes before applying them. Route VK and TURN traffic through 
 ## Changelog format
 
 - Start each version with `## vX.Y.Z - YYYY-MM-DD`. Mark the initial release as "Первый релиз".
-- Group entries under `Feature` and `Bugfix`. Use `Improvement` or `Breaking change` only when relevant. Omit empty groups.
+- Group entries using Keep a Changelog categories in the changelog language. Use Added, Changed, Deprecated, Removed, Fixed and Security as needed, and omit empty groups.
 - Each entry names the change and briefly describes the user-visible result. Keep one change per entry. Avoid implementation history, build/test details and generic phrases such as "various improvements".
-- Use the same concise groups in GitHub release notes.
+- Use Markdown section headings and the same concise groups in GitHub release notes.
 - `.github/workflows/release-cleanup.yml` retains the five most recently published releases, including prereleases, and removes older releases with their assets. It runs on publication, daily and manually. Drafts and Git tags are preserved.
-
-```markdown
-- Feature
-  - Feature name - short description.
-- Bugfix
-  - Fixed issue - resulting behavior.
-```
