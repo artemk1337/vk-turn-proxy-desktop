@@ -7,7 +7,7 @@ COPY third_party ./third_party
 RUN go mod download && go install github.com/akavel/rsrc@v0.10.2
 COPY . .
 RUN go test -count=1 ./tools/vk-turn-proxy-console ./tools/vk-turn-proxy-windows ./pkg/wireguard-profile ./pkg/proxy/srtpwrap ./pkg/turnbind
-ARG VERSION=v0.4.1
+ARG VERSION=v0.5.0
 RUN set -eu; mkdir -p /out; for arch in amd64 arm64; do \
       dir="/out/vk-turn-proxy-windows-${VERSION}-${arch}"; mkdir -p "$dir"; \
       rsrc -arch "$arch" -manifest tools/vk-turn-proxy-windows/app.manifest -o "tools/vk-turn-proxy-windows/rsrc_windows_${arch}.syso"; \

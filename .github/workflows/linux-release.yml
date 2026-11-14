@@ -1,0 +1,33 @@
+name: Linux release packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to validate
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download locally built packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern '*linux*amd64*.deb' --dir release-assets
+      - name: Install desktop test dependencies
+        run: sudo apt-get update && sudo apt-get install -y python3-gi librsvg2-common gir1.2-gtk-3.0 gir1.2-webkit2-4.1 gir1.2-ayatanaappindicator3-0.1 xvfb xauth dbus-x11 iproute2 pkexec polkitd
+      - name: Validate Linux installation and interface
+        run: sudo bash installer/linux/smoke.sh release-assets/*amd64*.deb screenshots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installed-linux-ui
+          path: screenshots/*.png
+          if-no-files-found: ignore

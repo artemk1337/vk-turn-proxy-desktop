@@ -10,8 +10,8 @@ package main
 // gateway), the system DNS (networksetup on macOS persists across a reboot;
 // a rewritten resolv.conf), FreeBSD's cloned tun and the routes into it.
 //
-// The file lives in the working directory by default, beside the credential
-// cache: a start from another directory does not see it (-state-file).
+// Linux and Windows use protected machine storage by default. Other platforms
+// use the working directory unless -state-file selects an explicit path.
 
 import (
 	"encoding/json"

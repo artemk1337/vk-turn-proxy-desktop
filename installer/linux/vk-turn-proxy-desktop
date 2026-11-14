@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+
+launcher=$(readlink -f -- "$0")
+app_dir=$(dirname -- "$launcher")
+if [ ! -f "$app_dir/main.py" ]; then
+    app_dir=/usr/lib/vk-turn-proxy-desktop
+fi
+export VKTURN_DESKTOP_LAUNCHER="$launcher"
+exec /usr/bin/python3 "$app_dir/main.py" "$@"

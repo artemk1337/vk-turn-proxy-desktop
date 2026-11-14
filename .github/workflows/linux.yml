@@ -1,0 +1,42 @@
+name: Linux
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install GTK test dependencies
+        run: sudo apt-get update && sudo apt-get install -y python3-gi librsvg2-common gir1.2-gtk-3.0 gir1.2-webkit2-4.1 gir1.2-ayatanaappindicator3-0.1 xvfb xauth dbus-x11 iproute2 pkexec polkitd
+      - name: Test console and shared transport
+        run: go test -race ./tools/vk-turn-proxy-console ./tools/vk-turn-proxy-windows ./pkg/wireguard-profile ./pkg/proxy/srtpwrap ./pkg/turnbind
+      - name: Test Linux interface helpers
+        run: /usr/bin/python3 -m unittest discover -s tools/vk-turn-proxy-linux -p '*_test.py'
+      - name: Build terminal client
+        run: mkdir -p build && CGO_ENABLED=0 go build -o build/vk-turn-proxy-console ./tools/vk-turn-proxy-console
+      - name: Test tunnel and recovery in an isolated network
+        run: |
+          go test -c -o build/console.test ./tools/vk-turn-proxy-console
+          sudo unshare --net env VKTURN_LINUX_RUNTIME_TEST=1 ./build/console.test -test.run TestLinuxRuntime -test.v
+      - name: Inspect the GTK interface
+        env:
+          VKTURN_REQUIRE_WEBKIT_TEST: "1"
+          VKTURN_TEST_BACKEND: ${{ github.workspace }}/build/vk-turn-proxy-console
+        run: dbus-run-session -- xvfb-run -a /usr/bin/python3 tools/vk-turn-proxy-linux/main.py --smoke-test --capture-ui screenshots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-ui
+          path: screenshots/*.png
+          if-no-files-found: ignore

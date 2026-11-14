@@ -12,3 +12,7 @@
 *.swp
 *~
 .private-notes/
+
+# Python cache
+**/__pycache__/
+**/*.pyc

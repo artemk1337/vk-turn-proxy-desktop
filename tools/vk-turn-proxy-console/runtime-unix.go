@@ -5,23 +5,12 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"os"
 	"os/exec"
 	"os/signal"
 	"syscall"
 )
-
-// defaultPidFile: /var/run is there, root's and emptied at boot on macOS,
-// Linux (where it is /run) and FreeBSD alike. The state file is NOT kept
-// there: it must outlive a reboot — a DNS setting it has to put back does.
-const defaultPidFile = "/var/run/vk-turn-proxy-console.pid"
-
-const defaultStateFile = ".vk-turn-proxy-console-state.json"
-const defaultCredCache = ".vk-turn-proxy-console-creds.json"
-
-func prepareConsoleStorage(*options) error { return nil }
 
 // ignoreBrokenPipe: a dead log must not kill a process that owes a cleanup.
 // A write to a closed pipe on stdout or stderr ends a Go program with SIGPIPE
@@ -46,10 +35,3 @@ func requireRoot() error {
 }
 
 func hideCommandWindow(*exec.Cmd) {}
-
-func watchParent(_ context.Context, pid int, _ context.CancelFunc) error {
-	if pid != 0 {
-		return errors.New("-parent-pid is supported on Windows")
-	}
-	return nil
-}

@@ -23,7 +23,7 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
         shell: pwsh
         run: |
-          gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --pattern '*amd64*' --pattern '*arm64-setup.exe' --dir release-assets
+          gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --pattern '*windows*amd64*' --pattern '*windows*arm64-setup.exe' --dir release-assets
       - name: Validate installer and terminal wizard
         env:
           RELEASE_TAG: ${{ inputs.tag }}

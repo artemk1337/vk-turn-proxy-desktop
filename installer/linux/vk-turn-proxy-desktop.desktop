@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=VK TURN Proxy
+Comment=WireGuard through VK TURN relays
+Comment[ru]=WireGuard через TURN-серверы VK
+Exec=vk-turn-proxy-desktop
+Icon=vk-turn-proxy-desktop
+Terminal=false
+StartupNotify=true
+Categories=Network;
+Keywords=VPN;WireGuard;VK;TURN;

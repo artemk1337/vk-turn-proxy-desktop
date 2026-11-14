@@ -1,0 +1,31 @@
+# syntax=docker/dockerfile:1
+FROM golang:1.26-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+COPY third_party ./third_party
+RUN go mod download
+COPY . .
+RUN go test -count=1 ./tools/vk-turn-proxy-console ./pkg/wireguard-profile ./pkg/proxy/srtpwrap ./pkg/turnbind
+ARG VERSION=v0.5.0
+RUN set -eu; for arch in amd64 arm64; do \
+      mkdir -p "/tmp/bin/$arch"; \
+      GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
+        -o "/tmp/bin/$arch/vk-turn-proxy-console" ./tools/vk-turn-proxy-console; \
+    done
+RUN sh installer/linux/package.sh "$VERSION" /tmp/bin /out
+
+FROM debian:bookworm-slim AS verify
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      python3 python3-gi gir1.2-gtk-3.0 iproute2 pkexec polkitd ca-certificates \
+      gir1.2-ayatanaappindicator3-0.1 gir1.2-webkit2-4.1 xvfb xauth dbus-x11 \
+    && rm -rf /var/lib/apt/lists/*
+# Minimal GTK installations need the SVG pixbuf loader for the application icon.
+RUN apt-get update && apt-get install -y --no-install-recommends librsvg2-common \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=build /out/ /packages/
+COPY installer/linux/smoke.sh /smoke.sh
+RUN sh /smoke.sh /packages/*-"$(dpkg --print-architecture)".deb /screenshots
+
+FROM scratch
+COPY --from=build /out/ /
+COPY --from=verify /screenshots/ /qa/

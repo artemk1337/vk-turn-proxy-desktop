@@ -30,10 +30,12 @@ import (
 var version = "dev"
 
 type options struct {
-	configPath, serverName string
-	list, cleanup, version bool
-	wizard                 bool
-	language               string
+	configPath, serverName        string
+	wgConfigPath, serverTransport string
+	vkLinkFile                    string
+	list, cleanup, version        bool
+	wizard                        bool
+	language                      string
 
 	peer, turnTransport, dns, vkLink, turnServer string
 	conns, poolReserve, mtu, uplinkPace          int
@@ -60,6 +62,9 @@ func parseFlags(args []string) (*options, error) {
 	o := &options{set: map[string]bool{}}
 	fs := flag.NewFlagSet("vk-turn-proxy-console", flag.ContinueOnError)
 	fs.StringVar(&o.configPath, "config", "vk-turn-proxy-console.json", "connection link, JSON profile, or multi-server JSON file")
+	fs.StringVar(&o.wgConfigPath, "wg-config", "", "WireGuard .conf file, combined with -vk-link and optional -peer")
+	fs.StringVar(&o.serverTransport, "server-transport", "srtp", "WireGuard server transport for -wg-config: srtp or dtls")
+	fs.StringVar(&o.vkLinkFile, "vk-link-file", "", "private VK call link file for -wg-config")
 	fs.BoolVar(&o.wizard, "wizard", false, "set up a connection step by step")
 	fs.StringVar(&o.language, "lang", "", "setup wizard language: en or ru")
 	fs.StringVar(&o.serverName, "server", "", "the server's NAME in the profile (default: the active compatible server)")
@@ -101,6 +106,18 @@ func parseFlags(args []string) (*options, error) {
 	fs.Visit(func(f *flag.Flag) { o.set[f.Name] = true })
 	if o.language != "" && o.language != "en" && o.language != "ru" {
 		return nil, errors.New("-lang must be en or ru")
+	}
+	if o.wgConfigPath != "" && (o.wizard || o.set["config"]) {
+		return nil, errors.New("-wg-config cannot be combined with -config or -wizard")
+	}
+	if o.vkLinkFile != "" && (o.wgConfigPath == "" || o.set["vk-link"]) {
+		return nil, errors.New("-vk-link-file requires -wg-config and cannot be combined with -vk-link")
+	}
+	if o.set["server-transport"] && o.wgConfigPath == "" {
+		return nil, errors.New("-server-transport requires -wg-config")
+	}
+	if o.serverTransport != "srtp" && o.serverTransport != "dtls" {
+		return nil, errors.New("-server-transport must be srtp or dtls")
 	}
 	return o, nil
 }
@@ -228,9 +245,12 @@ func realMain(args []string) int {
 		})
 	}
 	var b *backupFile
-	if o.wizard || autoSetupWizard(args, o.configPath) {
+	switch {
+	case o.wgConfigPath != "":
+		b, err = loadWireGuardConfig(o)
+	case o.wizard || autoSetupWizard(args, o.configPath):
 		b, err = runSetupWizard(os.Stdin, os.Stdout, o)
-	} else {
+	default:
 		b, err = loadBackup(o.configPath)
 	}
 	if err != nil {
@@ -263,8 +283,12 @@ func realMain(args []string) int {
 		log.Print(err)
 		return 2
 	}
-	if configReadableByOthers(o.configPath) {
-		log.Printf("WARNING: %s is readable by other users and holds the WireGuard private key — chmod 600 it", o.configPath)
+	configPath := o.configPath
+	if o.wgConfigPath != "" {
+		configPath = o.wgConfigPath
+	}
+	if configReadableByOthers(configPath) {
+		log.Printf("WARNING: %s is readable by other users and holds the WireGuard private key — chmod 600 it", configPath)
 	}
 	cookie := ""
 	if o.cookieFile != "" {

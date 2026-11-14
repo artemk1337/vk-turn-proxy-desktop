@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.5.0 - 2026-11-14
+
+- Add Linux GUI and terminal packages for x64 and ARM64.
+- Add Linux desktop integration, connection controls and protected backend lifecycle.
+
 ## v0.4.1 - 2026-11-14
 
 - Move the desktop client into its own repository.
