@@ -1,0 +1,37 @@
+name: Windows release packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to validate
+        required: true
+        type: string
+
+permissions:
+  # GitHub exposes draft release assets to tokens with repository write access.
+  contents: write
+
+jobs:
+  install:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download locally built packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        shell: pwsh
+        run: |
+          gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --pattern '*amd64*' --pattern '*arm64-setup.exe' --dir release-assets
+      - name: Validate installer and terminal wizard
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        shell: pwsh
+        run: ./.github/scripts/windows-release-smoke.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installed-windows-ui
+          path: screenshots/*.png
+          if-no-files-found: ignore

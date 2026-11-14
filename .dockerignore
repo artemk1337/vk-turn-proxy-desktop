@@ -1,0 +1,6 @@
+.git
+dist
+**/*.exe
+**/*.syso
+**/*.test
+.DS_Store

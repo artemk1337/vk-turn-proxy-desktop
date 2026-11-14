@@ -1,0 +1,248 @@
+package main
+
+// The pinner — the dial hook's console side. Sabotage seen red: an on-link
+// host pinned; the tunnel's DNS server pinned (everyone's DNS would go around
+// the tunnel); IPv6 refused although not blocked; the same host pinned twice;
+// a pin not journaled before it is made; a pin not re-pointed at a new
+// gateway; an address asked while the network was down never pinned; a route
+// that existed before taken as ours (and deleted on exit).
+
+import (
+	"errors"
+	"net"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+)
+
+func writeFile(t *testing.T, p, content string) {
+	t.Helper()
+	if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// fakeRun records every command; exists names hosts whose pin is refused as
+// already there.
+type fakeRun struct {
+	mu     sync.Mutex
+	cmds   []string
+	exists map[string]bool
+	fail   map[string]int // a host whose add / change / replace fails this many more times
+	failQ  map[string]int // a host whose `route get` fails this many more times
+	j      *journal
+	// The routing table's /32s as route(8) leaves them, with the answers
+	// measured on the stands (2026-10-18): `route -n get` shows a host's own
+	// route (destination, a /32 mask) or the covering one (destination
+	// default); `change` of a /32 that is gone answers «route has not been
+	// found» on FreeBSD and, on macOS, 0 — having changed the covering route
+	// (counted in coverChanged).
+	table        map[string]string // host → the gateway argv tail
+	freebsd      bool
+	coverChanged int
+	// journaledFirst: the pin's undo was in the journal when its add ran.
+	journaledFirst []bool
+}
+
+func (f *fakeRun) run(argv []string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cmd := strings.Join(argv, " ")
+	f.cmds = append(f.cmds, cmd)
+	if len(argv) > 5 && argv[3] == "add" && strings.HasSuffix(argv[5], "/32") && f.j != nil {
+		f.journaledFirst = append(f.journaledFirst, f.j.has(pinKey(strings.TrimSuffix(argv[5], "/32"))))
+	}
+	if len(argv) == 5 && argv[1] == "-n" && argv[2] == "get" {
+		h := argv[4]
+		if n := f.failQ[h]; n > 0 {
+			f.failQ[h] = n - 1
+			return "", errors.New("route -n get -inet " + h + ": signal: killed")
+		}
+		if _, ok := f.table[h]; ok {
+			return "   route to: " + h + "\ndestination: " + h + "\n       mask: 255.255.255.255\n      flags: <UP,DONE,STATIC>\n", nil
+		}
+		return "   route to: " + h + "\ndestination: default\n       mask: default\n      flags: <UP,GATEWAY,DONE,STATIC>\n", nil
+	}
+	for h, n := range f.fail {
+		if n > 0 && (strings.Contains(cmd, " add ") || strings.Contains(cmd, " change ") || strings.Contains(cmd, " replace ")) && strings.Contains(cmd, h+"/32") {
+			f.fail[h] = n - 1
+			return "route: writing to routing socket: Network is unreachable", errors.New("exit status 1")
+		}
+	}
+	for h := range f.exists {
+		if strings.Contains(cmd, " add ") && strings.Contains(cmd, h+"/32") {
+			return "route: writing to routing socket: File exists", errors.New("exit status 1")
+		}
+	}
+	if len(argv) > 5 && argv[0] == "route" && strings.HasSuffix(argv[5], "/32") {
+		h, tail := strings.TrimSuffix(argv[5], "/32"), strings.Join(argv[6:], " ")
+		_, have := f.table[h]
+		switch argv[3] {
+		case "add":
+			if have {
+				return "route: writing to routing socket: File exists", errors.New("exit status 1: File exists")
+			}
+			f.table[h] = tail
+		case "delete":
+			if !have {
+				return "route: writing to routing socket: not in table", errors.New("exit status 1: not in table")
+			}
+			delete(f.table, h)
+		case "change":
+			if !have {
+				if f.freebsd {
+					return "route: route has not been found", errors.New("exit status 1: route: route has not been found")
+				}
+				f.coverChanged++ // macOS: 0, and the covering route re-pointed
+				return "change net " + h + ": gateway " + tail, nil
+			}
+			f.table[h] = tail
+		}
+	}
+	return "", nil
+}
+
+// vanish takes a host's route out of the table, as the kernel does when the
+// interface it went through goes away.
+func (f *fakeRun) vanish(h string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.table, h)
+}
+
+func (f *fakeRun) via(h string) (string, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	g, ok := f.table[h]
+	return g, ok
+}
+
+func (f *fakeRun) list() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.cmds...)
+}
+
+func testPinner(t *testing.T) (*pinner, *fakeRun, *journal) {
+	t.Helper()
+	j := newJournal(filepath.Join(t.TempDir(), "state.json"))
+	f := &fakeRun{exists: map[string]bool{}, fail: map[string]int{}, failQ: map[string]int{}, j: j, table: map[string]string{}}
+	p := newPinner(darwinCmds{}, f.run, j, t.Logf)
+	_, p.tunnel, _ = net.ParseCIDR("10.66.66.2/24")
+	p.never["1.1.1.1"] = true
+	_, lan, _ := net.ParseCIDR("192.168.1.5/24")
+	p.enable(true)
+	p.setGateway(gateway{IP: "192.168.1.1", Iface: "en0"}, true, []*net.IPNet{lan})
+	return p, f, j
+}
+
+func TestThePinnerPinsWhatTheProxyDialsAndNothingElse(t *testing.T) {
+	p, f, j := testPinner(t)
+	for _, a := range []string{"203.0.113.50:19302", "203.0.113.50:19302", "198.51.100.7:443", "192.168.1.20:53",
+		"10.66.66.1:53", "127.0.0.1:53", "169.254.1.1:80", "1.1.1.1:53"} {
+		if err := p.hook("tcp4", a); err != nil {
+			t.Fatalf("hook(%s): %v", a, err)
+		}
+	}
+	got := f.list()
+	want := []string{"route -q -n add -inet 203.0.113.50/32 192.168.1.1", "route -q -n add -inet 198.51.100.7/32 192.168.1.1"}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("commands:\n%s\nwant:\n%s\n(each relay once; the LAN, the tunnel's subnet, loopback, link-local and the tunnel's DNS never)", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	for i, first := range f.journaledFirst {
+		if !first {
+			t.Fatalf("pin %d was made before its undo was journaled — a crash in between would leave it for good", i)
+		}
+	}
+	if !j.has(pinKey("203.0.113.50")) || !j.has(pinKey("198.51.100.7")) || p.count() != 2 {
+		t.Fatalf("pins not journaled / counted: %d", p.count())
+	}
+}
+
+func TestIPv6IsLeftAloneUnlessBlocked(t *testing.T) {
+	p, f, _ := testPinner(t)
+	if err := p.hook("tcp6", "[2001:db8::5]:443"); err != nil {
+		t.Fatalf("IPv6 refused although not blocked: %v", err)
+	}
+	p.blockV6 = true
+	if err := p.hook("tcp6", "[2001:db8::5]:443"); !errors.Is(err, errIPv6Blocked) {
+		t.Fatalf("IPv6 with -block-ipv6: %v — the dialer must fall back to IPv4", err)
+	}
+	if len(f.list()) != 0 {
+		t.Fatalf("IPv6 pinned: %q", f.list())
+	}
+}
+
+func TestSplitModePinsNothing(t *testing.T) {
+	p, f, _ := testPinner(t)
+	p.enable(false)
+	if err := p.hook("tcp4", "203.0.113.50:19302"); err != nil || len(f.list()) != 0 {
+		t.Fatalf("split mode pinned: %q (%v)", f.list(), err)
+	}
+}
+
+func TestPinsFollowTheGateway(t *testing.T) {
+	p, f, _ := testPinner(t)
+	_ = p.hook("tcp4", "203.0.113.50:19302")
+	p.setGateway(gateway{}, false, nil) // the network goes
+	_ = p.hook("udp4", "203.0.113.60:3478")
+	if n := len(f.list()); n != 1 {
+		t.Fatalf("a pin made with no gateway: %q", f.list())
+	}
+	_, lte, _ := net.ParseCIDR("172.20.10.2/28")
+	p.setGateway(gateway{IP: "172.20.10.1", Iface: "en5"}, true, []*net.IPNet{lte})
+	got := strings.Join(f.list()[1:], "\n")
+	for _, want := range []string{"route -q -n change -inet 203.0.113.50/32 172.20.10.1", "route -q -n add -inet 203.0.113.60/32 172.20.10.1"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("after the new network:\n%s\nmissing %q (a pin re-pointed; an address asked while down pinned now)", got, want)
+		}
+	}
+}
+
+func TestARouteThatExistedIsNotOurs(t *testing.T) {
+	p, f, j := testPinner(t)
+	f.exists["203.0.113.70"] = true
+	if err := p.hook("tcp4", "203.0.113.70:443"); err != nil {
+		t.Fatalf("an existing route is an error: %v", err)
+	}
+	if j.has(pinKey("203.0.113.70")) || p.count() != 0 {
+		t.Fatal("a route the console did not make is journaled as its own — it would be deleted on exit")
+	}
+	p.removeAll()
+	for _, c := range f.list() {
+		if strings.Contains(c, "delete") {
+			t.Fatalf("deleted a route it did not make: %q", c)
+		}
+	}
+}
+
+func TestRemoveAllTakesOurPinsBack(t *testing.T) {
+	p, f, j := testPinner(t)
+	_ = p.hook("tcp4", "203.0.113.50:19302")
+	_ = p.hook("tcp4", "198.51.100.7:443")
+	p.removeAll()
+	dels := 0
+	for _, c := range f.list() {
+		if strings.HasPrefix(c, "route -q -n delete -inet ") {
+			dels++
+		}
+	}
+	if dels != 2 || p.count() != 0 || j.has(pinKey("203.0.113.50")) {
+		t.Fatalf("removeAll: %d deletes, %d pins left, journal %v", dels, p.count(), j.doc.Undo)
+	}
+}
+
+func TestConcurrentDialsPinOnce(t *testing.T) {
+	p, f, _ := testPinner(t)
+	var wg sync.WaitGroup
+	for i := 0; i < 30; i++ { // thirty connections dial one relay at once
+		wg.Add(1)
+		go func() { defer wg.Done(); _ = p.hook("tcp4", "203.0.113.50:19302") }()
+	}
+	wg.Wait()
+	if n := len(f.list()); n != 1 {
+		t.Fatalf("%d commands for one relay, want 1", n)
+	}
+}

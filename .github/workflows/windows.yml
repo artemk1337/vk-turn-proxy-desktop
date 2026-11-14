@@ -1,0 +1,41 @@
+name: Windows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Embed desktop manifest
+        run: go run github.com/akavel/rsrc@v0.10.2 -manifest tools/vk-turn-proxy-windows/app.manifest -o tools/vk-turn-proxy-windows/rsrc_windows_amd64.syso
+      - name: Test console and transport
+        env:
+          VKTURN_UI_CAPTURE_DIR: ${{ github.workspace }}/screenshots
+          VKTURN_REQUIRE_WEBVIEW2_TEST: "1"
+        run: go test -count=1 ./tools/vk-turn-proxy-console ./tools/vk-turn-proxy-windows ./pkg/wireguard-profile ./pkg/proxy/srtpwrap ./pkg/turnbind
+      - name: Build desktop client
+        id: desktop
+        if: always()
+        run: |
+          go build -ldflags "-H=windowsgui" -o vk-turn-proxy-windows.exe ./tools/vk-turn-proxy-windows
+      - name: Open and inspect the desktop window
+        if: always() && steps.desktop.outcome == 'success'
+        shell: pwsh
+        run: ./.github/scripts/windows-smoke.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-ui
+          path: screenshots/*.png
+          if-no-files-found: ignore

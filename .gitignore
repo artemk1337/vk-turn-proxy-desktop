@@ -1,0 +1,14 @@
+# Build output
+/dist/
+/build/
+/screenshots/
+*.exe
+*.syso
+*.test
+*.out
+
+# Local files
+.DS_Store
+*.swp
+*~
+.private-notes/

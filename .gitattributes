@@ -1,0 +1,2 @@
+# Preserve captured upstream pages byte for byte.
+pkg/proxy/testdata/*.html -whitespace
