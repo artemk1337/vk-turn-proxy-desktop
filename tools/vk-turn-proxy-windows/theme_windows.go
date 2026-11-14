@@ -59,7 +59,7 @@ func (a *application) applyTheme() {
 	apply = func(widget walk.Widget, baseBrush walk.Brush) {
 		brush := baseBrush
 		switch widget.(type) {
-		case *walk.TextEdit, *walk.LineEdit, *walk.ComboBox:
+		case *walk.TextEdit, *walk.LineEdit, *walk.ComboBox, *walk.NumberEdit:
 			brush = inputBrush
 		}
 		widget.SetBackground(brush)
