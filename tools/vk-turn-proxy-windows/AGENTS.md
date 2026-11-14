@@ -17,3 +17,6 @@ Follow the root [AGENTS.md](../../AGENTS.md).
 
 - Cookie imports and website login share the backend cookie validation. Never put cookies in preferences, logs or command-line arguments; pass them through private session files and remove those after the backend exits.
 - Website login uses an isolated temporary WebView2 profile. Extract only the VK authentication cookie pair, close the controller on success or cancellation, and remove the browser profile. Show an actionable message when the Runtime is missing.
+
+- Tab headers have one buffered renderer. Handle native paint messages before the default Walk renderer to prevent duplicate hover text. Preserve keyboard focus and selection.
+- Keep settings controls in bounded columns and align the startup checkbox explicitly to the left. Check layout at default and minimum window sizes in both languages and themes.

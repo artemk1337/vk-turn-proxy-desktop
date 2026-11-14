@@ -127,27 +127,61 @@ func (a *application) installTabPainting() {
 	a.nativeTabs = win.HWND(handle)
 	original := win.GetWindowLongPtr(a.nativeTabs, win.GWLP_WNDPROC)
 	callback := syscall.NewCallback(func(hwnd win.HWND, msg uint32, wParam, lParam uintptr) uintptr {
+		switch msg {
+		case win.WM_ERASEBKGND:
+			return 1
+		case win.WM_PAINT:
+			// Walk's tab procedure draws selected text after WM_PRINTCLIENT.
+			// Handle the whole paint here so native hover painting and our labels
+			// cannot appear at different positions within the same frame.
+			var paint win.PAINTSTRUCT
+			dc := win.BeginPaint(hwnd, &paint)
+			defer win.EndPaint(hwnd, &paint)
+			a.paintTabWindow(hwnd, dc)
+			return 0
+		case win.WM_PRINTCLIENT, win.WM_PRINT:
+			a.paintTabSurface(hwnd, win.HDC(wParam))
+			return 0
+		}
 		result := win.CallWindowProc(original, hwnd, msg, wParam, lParam)
 		switch msg {
-		case win.WM_PAINT:
-			a.paintTabHeader(hwnd, 0)
-		case win.WM_PRINTCLIENT, win.WM_PRINT:
-			a.paintTabHeader(hwnd, win.HDC(wParam))
+		case win.WM_SETFOCUS, win.WM_KILLFOCUS, win.WM_UPDATEUISTATE:
+			win.InvalidateRect(hwnd, nil, false)
 		}
 		return result
 	})
 	win.SetWindowLongPtr(a.nativeTabs, win.GWLP_WNDPROC, callback)
 }
 
-func (a *application) paintTabHeader(hwnd win.HWND, dc win.HDC) {
-	if dc == 0 {
-		dc = win.GetDC(hwnd)
-		defer win.ReleaseDC(hwnd, dc)
-	}
+func (a *application) paintTabWindow(hwnd win.HWND, dc win.HDC) {
 	var rect win.RECT
-	win.SendMessage(hwnd, 0x130a, 0, uintptr(unsafe.Pointer(&rect)))
-	bounds := a.tabs.ClientBoundsPixels()
-	track := win.RECT{Right: int32(bounds.Width), Bottom: rect.Bottom + 2}
+	win.GetClientRect(hwnd, &rect)
+	bitmap, err := walk.NewBitmapForDPI(walk.Size{Width: int(rect.Right), Height: int(rect.Bottom)}, a.tabs.DPI())
+	if err != nil {
+		a.paintTabSurface(hwnd, dc)
+		return
+	}
+	defer bitmap.Dispose()
+	canvas, err := walk.NewCanvasFromImage(bitmap)
+	if err != nil {
+		a.paintTabSurface(hwnd, dc)
+		return
+	}
+	defer canvas.Dispose()
+	a.paintTabSurface(hwnd, canvas.HDC())
+	win.BitBlt(dc, 0, 0, rect.Right, rect.Bottom, canvas.HDC(), 0, 0, win.SRCCOPY)
+}
+
+func (a *application) paintTabSurface(hwnd win.HWND, dc win.HDC) {
+	var bounds win.RECT
+	win.GetClientRect(hwnd, &bounds)
+	panel := nativeBrush(a.palette.panel)
+	fillNativeRect(dc, &bounds, panel)
+	win.DeleteObject(win.HGDIOBJ(panel))
+
+	var rect win.RECT
+	win.SendMessage(hwnd, win.TCM_GETITEMRECT, 0, uintptr(unsafe.Pointer(&rect)))
+	track := win.RECT{Right: bounds.Right, Bottom: rect.Bottom + int32(a.tabs.IntFrom96DPI(2))}
 	brush := nativeBrush(a.palette.window)
 	fillNativeRect(dc, &track, brush)
 	a.paintTabBorder(hwnd, dc, rect.Bottom)
@@ -156,8 +190,9 @@ func (a *application) paintTabHeader(hwnd win.HWND, dc win.HDC) {
 	font := win.SendMessage(hwnd, win.WM_GETFONT, 0, 0)
 	oldFont := win.SelectObject(dc, win.HGDIOBJ(font))
 	defer win.SelectObject(dc, oldFont)
+	focusVisible := win.GetFocus() == hwnd && win.SendMessage(hwnd, win.WM_QUERYUISTATE, 0, 0)&win.UISF_HIDEFOCUS == 0
 	for i := 0; i < a.tabs.Pages().Len(); i++ {
-		win.SendMessage(hwnd, 0x130a, uintptr(i), uintptr(unsafe.Pointer(&rect)))
+		win.SendMessage(hwnd, win.TCM_GETITEMRECT, uintptr(i), uintptr(unsafe.Pointer(&rect)))
 		color := a.palette.muted
 		if i == a.tabs.CurrentIndex() {
 			active := nativeBrush(a.palette.panel)
@@ -165,14 +200,19 @@ func (a *application) paintTabHeader(hwnd win.HWND, dc win.HDC) {
 			win.DeleteObject(win.HGDIOBJ(active))
 			accent := nativeBrush(a.palette.accent)
 			line := rect
-			line.Top = line.Bottom - 2
+			line.Top = line.Bottom - int32(a.tabs.IntFrom96DPI(2))
 			fillNativeRect(dc, &line, accent)
 			win.DeleteObject(win.HGDIOBJ(accent))
 			color = a.palette.text
 		}
 		win.SetTextColor(dc, win.COLORREF(color))
 		text := windows.StringToUTF16Ptr(a.tabs.Pages().At(i).Title())
-		win.DrawTextEx(dc, text, -1, &rect, win.DT_CENTER|win.DT_VCENTER|win.DT_SINGLELINE, nil)
+		win.DrawTextEx(dc, text, -1, &rect, win.DT_CENTER|win.DT_VCENTER|win.DT_SINGLELINE|win.DT_NOPREFIX, nil)
+		if focusVisible && i == int(win.SendMessage(hwnd, win.TCM_GETCURFOCUS, 0, 0)) {
+			inset := int32(a.tabs.IntFrom96DPI(3))
+			focus := win.RECT{Left: rect.Left + inset, Top: rect.Top + inset, Right: rect.Right - inset, Bottom: rect.Bottom - inset}
+			win.DrawFocusRect(dc, &focus)
+		}
 	}
 }
 

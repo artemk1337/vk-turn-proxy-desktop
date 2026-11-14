@@ -43,17 +43,35 @@ func (a *application) preparePreferences() error {
 }
 
 func (a *application) settingsTab() TabPage {
-	return TabPage{Title: "Settings", Layout: VBox{Margins: Margins{Left: 18, Top: 20, Right: 18, Bottom: 18}, Spacing: 12}, Children: []Widget{
-		Label{Text: "Language", Font: Font{Family: "Segoe UI", PointSize: 12, Bold: true}, TextColor: headingText},
-		ComboBox{AssignTo: &a.languageChoice, Model: []string{"English", "Русский"}, CurrentIndex: 0, MaxSize: Size{Width: 300}},
-		VSpacer{Size: 10},
-		Label{Text: "Appearance", Font: Font{Family: "Segoe UI", PointSize: 12, Bold: true}, TextColor: headingText},
-		ComboBox{AssignTo: &a.themeChoice, Model: []string{"Light", "Dark gray"}, CurrentIndex: 0, MaxSize: Size{Width: 300}},
-		VSpacer{Size: 18},
-		CheckBox{AssignTo: &a.startupChoice, Text: "Start with Windows", Checked: a.preferences.AutoStart},
-		Label{Text: "Startup opens the app. Connect when you are ready.", TextColor: mutedText},
-		VSpacer{},
-	}}
+	return TabPage{
+		Title:  "Settings",
+		Layout: VBox{Margins: Margins{Left: 14, Top: 16, Right: 14, Bottom: 14}, Alignment: AlignHNearVNear, Spacing: 12},
+		Children: []Widget{
+			Composite{Layout: HBox{MarginsZero: true, Alignment: AlignHNearVNear, Spacing: 20}, Children: []Widget{
+				Composite{MinSize: Size{Width: 220}, MaxSize: Size{Width: 240}, Layout: VBox{MarginsZero: true, Alignment: AlignHNearVNear, Spacing: 7}, Children: []Widget{
+					Label{Text: "Language", Font: Font{Family: "Segoe UI", PointSize: 10, Bold: true}, TextColor: headingText},
+					ComboBox{AssignTo: &a.languageChoice, Model: []string{"English", "Русский"}, CurrentIndex: 0, MinSize: Size{Width: 220}},
+				}},
+				Composite{MinSize: Size{Width: 220}, MaxSize: Size{Width: 240}, Layout: VBox{MarginsZero: true, Alignment: AlignHNearVNear, Spacing: 7}, Children: []Widget{
+					Label{Text: "Appearance", Font: Font{Family: "Segoe UI", PointSize: 10, Bold: true}, TextColor: headingText},
+					ComboBox{AssignTo: &a.themeChoice, Model: []string{"Light", "Dark gray"}, CurrentIndex: 0, MinSize: Size{Width: 220}},
+				}},
+				HSpacer{},
+			}},
+			VSpacer{Size: 8},
+			Composite{Layout: VBox{MarginsZero: true, Alignment: AlignHNearVNear, Spacing: 6}, Children: []Widget{
+				Composite{Layout: HBox{MarginsZero: true, Alignment: AlignHNearVCenter, SpacingZero: true}, Children: []Widget{
+					CheckBox{AssignTo: &a.startupChoice, Alignment: AlignHNearVCenter, Text: "Start with Windows", Checked: a.preferences.AutoStart},
+					HSpacer{},
+				}},
+				Composite{Layout: HBox{Margins: Margins{Left: 22}, Alignment: AlignHNearVCenter, SpacingZero: true}, Children: []Widget{
+					Label{Text: "Startup opens the app. Connect when you are ready.", TextColor: mutedText, Font: Font{Family: "Segoe UI", PointSize: 9}},
+					HSpacer{},
+				}},
+			}},
+			VSpacer{},
+		},
+	}
 }
 
 func (a *application) initializePreferences() {

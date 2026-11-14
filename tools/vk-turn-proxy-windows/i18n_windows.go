@@ -5,7 +5,8 @@ package main
 import "github.com/lxn/walk"
 
 var russianText = map[string]string{
-	"Show": "Открыть", "Exit": "Выход",
+	"Paste a link or open a JSON profile.": "Вставьте ссылку или откройте JSON-профиль.",
+	"Show":                                 "Открыть", "Exit": "Выход",
 	"Profiles (*.json;*.txt)|*.json;*.txt|All files (*.*)|*.*": "Профили (*.json;*.txt)|*.json;*.txt|Все файлы (*.*)|*.*",
 	"WireGuard (*.conf)|*.conf|All files (*.*)|*.*":            "WireGuard (*.conf)|*.conf|Все файлы (*.*)|*.*",
 	"Cookie files (*.txt)|*.txt|All files (*.*)|*.*":           "Файлы cookie (*.txt)|*.txt|Все файлы (*.*)|*.*",
@@ -121,6 +122,8 @@ func (a *application) applyLanguage() {
 	} else {
 		a.languageChoice.SetCurrentIndex(0)
 	}
+	a.wgConfig.SetToolTipText(a.tr("Full-tunnel .conf with one peer."))
+	a.server.SetToolTipText(a.tr("Choose a server by name from a multi-server JSON profile."))
 	a.endpoint.SetToolTipText(a.tr("VK TURN listener, usually port 56000. Leave empty to use Endpoint from the config."))
 	a.updateModeLabel()
 	a.updateConnectionState()
