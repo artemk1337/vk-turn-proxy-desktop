@@ -88,7 +88,7 @@ func (a *application) profileTab() TabPage {
 			Composite{Layout: HBox{MarginsZero: true, Alignment: AlignHNearVCenter, Spacing: 12}, Children: []Widget{
 				Label{Text: "Paste your connection link", Font: Font{Family: "Segoe UI", PointSize: 11, Bold: true}, TextColor: headingText},
 				HSpacer{},
-				PushButton{Text: "Open profile...", MinSize: Size{Width: 112, Height: 30}, MaxSize: Size{Width: 112, Height: 30}, OnClicked: a.openProfile},
+				PushButton{Text: "Open profile...", MinSize: Size{Width: 136, Height: 30}, MaxSize: Size{Width: 136, Height: 30}, OnClicked: a.openProfile},
 			}},
 			Label{Text: "Paste a link or open a JSON profile.", TextColor: mutedText},
 			TextEdit{AssignTo: &a.profile, MinSize: Size{Height: 110}, MaxSize: Size{Height: 180}, StretchFactor: 1, MaxLength: maxProfileSize, VScroll: true, Font: Font{Family: "Consolas", PointSize: 10}},

@@ -11,6 +11,7 @@ import (
 
 	"github.com/lxn/walk"
 	"github.com/lxn/win"
+	"golang.org/x/sys/windows"
 )
 
 func TestCompactLayoutPreservesSettingsAlignmentAndFormBounds(t *testing.T) {
@@ -23,7 +24,7 @@ func TestCompactLayoutPreservesSettingsAlignmentAndFormBounds(t *testing.T) {
 			}
 			var cases []layoutCase
 			for _, size := range []walk.Size{{Width: 760, Height: 610}, {Width: 960, Height: 760}, {Width: 720, Height: 580}} {
-				for _, page := range []int{4, 1, 2} {
+				for _, page := range []int{4, 0, 1, 2} {
 					cases = append(cases, layoutCase{size, page})
 				}
 			}
@@ -104,6 +105,8 @@ func TestCompactLayoutPreservesSettingsAlignmentAndFormBounds(t *testing.T) {
 
 func compactPageControls(a *application, page int) []walk.Widget {
 	switch page {
+	case 0:
+		return []walk.Widget{a.profile}
 	case 1:
 		return []walk.Widget{a.wgConfig, a.vkLink, a.endpoint, a.transport}
 	case 2:
@@ -125,6 +128,9 @@ func checkCompactPage(a *application, page int, requested walk.Size) error {
 		if bounds.Left < pageBounds.Left || bounds.Top < pageBounds.Top || bounds.Right > pageBounds.Right || bounds.Bottom > pageBounds.Bottom {
 			return fmt.Errorf("page %d clips %T: control=%v page=%v", page, control, bounds, pageBounds)
 		}
+	}
+	if err := checkButtonCaptions(a.tabs.Pages().At(page)); err != nil {
+		return err
 	}
 	if page != 4 {
 		return nil
@@ -148,6 +154,29 @@ func checkCompactPage(a *application, page int, requested walk.Size) error {
 	}
 	if startup.Top <= language.Bottom || startup.Right-startup.Left > int32(a.window.IntFrom96DPI(360)) {
 		return fmt.Errorf("startup checkbox is stretched or overlaps the selectors: %v", startup)
+	}
+	return nil
+}
+
+func checkButtonCaptions(container walk.Container) error {
+	for i := 0; i < container.Children().Len(); i++ {
+		child := container.Children().At(i)
+		if button, ok := child.(*walk.PushButton); ok {
+			dc := win.GetDC(button.Handle())
+			font := win.SelectObject(dc, win.HGDIOBJ(win.SendMessage(button.Handle(), win.WM_GETFONT, 0, 0)))
+			var text win.RECT
+			win.DrawTextEx(dc, windows.StringToUTF16Ptr(button.Text()), -1, &text, win.DT_CALCRECT|win.DT_SINGLELINE, nil)
+			win.SelectObject(dc, font)
+			win.ReleaseDC(button.Handle(), dc)
+			if width := button.ClientBoundsPixels().Width; int(text.Right-text.Left)+button.IntFrom96DPI(12) > width {
+				return fmt.Errorf("button caption %q is clipped: text=%d control=%d", button.Text(), text.Right-text.Left, width)
+			}
+		}
+		if nested, ok := child.(walk.Container); ok {
+			if err := checkButtonCaptions(nested); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
