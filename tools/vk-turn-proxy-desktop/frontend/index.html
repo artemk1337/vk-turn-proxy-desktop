@@ -394,10 +394,16 @@
               <option value="udp">UDP</option>
             </select>
           </div>
-          <label class="field" for="num-connections">
-            <span data-i18n="numConnections">TURN connections</span>
-            <input id="num-connections" type="number" min="1" max="120" step="1" value="30" required />
-          </label>
+          <div class="field">
+            <div class="field-label">
+              <label for="num-connections" data-i18n="numConnections">TURN connections</label>
+              <span class="help">
+                <button type="button" class="help-button" aria-describedby="num-connections-help" data-i18n-aria="numConnectionsHelp" aria-label="TURN connections help"><span aria-hidden="true">i</span></button>
+                <span id="num-connections-help" class="help-tooltip" role="tooltip" data-i18n="numConnectionsHint">Each channel uses a separate TURN allocation. Fewer channels reduce quota usage and may reduce speed. Error 486 on the first allocation means the server quota is already exhausted.</span>
+              </span>
+            </div>
+            <input id="num-connections" type="number" min="1" max="120" step="1" value="30" required aria-describedby="num-connections-help" />
+          </div>
           <div class="field">
             <div class="field-label">
               <label for="mtu">MTU</label>
