@@ -160,7 +160,7 @@ func runUndo(s undoStep, run func(argv []string) error) error {
 	if len(s.Argv) == 0 {
 		return nil
 	}
-	return run(s.Argv)
+	return run(windowsRouteUndo(s))
 }
 
 // undoAll takes every recorded change back, newest first; a step that fails

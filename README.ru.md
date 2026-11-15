@@ -20,7 +20,7 @@
 Установите `.deb` в Debian или Ubuntu и откройте **VK TURN Proxy** из меню приложений
 
 ```sh
-sudo apt install ./vk-turn-proxy-linux-v1.2.0-amd64.deb
+sudo apt install ./vk-turn-proxy-linux-v1.2.1-amd64.deb
 ```
 
 Для portable-версии распакуйте `.tar.gz` и запустите `./vk-turn-proxy-desktop`. Нужны Python 3, GTK 3, PyGObject, iproute2 и polkit. При подключении приложение запросит права администратора.
@@ -55,8 +55,8 @@ sudo vk-turn-proxy-console -wizard
 ## Сборка
 
 ```sh
-docker build --build-arg VERSION=v1.2.0 --output dist/windows -f Dockerfile.windows .
-docker build --build-arg VERSION=v1.2.0 --output dist/linux -f Dockerfile.linux .
+docker build --build-arg VERSION=v1.2.1 --output dist/windows -f Dockerfile.windows .
+docker build --build-arg VERSION=v1.2.1 --output dist/linux -f Dockerfile.linux .
 ```
 
 В `dist` появятся ZIP и установщики Windows, архивы и DEB-пакеты Linux для x64 и ARM64 с контрольными суммами.

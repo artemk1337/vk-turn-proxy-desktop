@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"unicode/utf16"
 )
@@ -41,8 +42,48 @@ func windowsRoute(prefix, iface, hop string) (add, del []string) {
 	filter := fmt.Sprintf("Get-NetRoute -DestinationPrefix %s -PolicyStore ActiveStore -ErrorAction SilentlyContinue", psQuote(prefix))
 	// A distinct metric lets crash recovery remove only routes created here.
 	add = powershell(fmt.Sprintf("if (@(%s).Count -gt 0) { throw 'File exists' }; New-NetRoute -DestinationPrefix %s -InterfaceAlias %s -NextHop %s -RouteMetric %d -PolicyStore ActiveStore | Out-Null", filter, psQuote(prefix), psQuote(iface), psQuote(hop), windowsRouteMetric))
-	del = powershell(fmt.Sprintf("%s | Where-Object { $_.RouteMetric -eq %d } | Remove-NetRoute -Confirm:$false", filter, windowsRouteMetric))
+	del = powershell(windowsRouteCleanup(prefix) + "; exit 0")
 	return add, del
+}
+
+// Enumerate the table without a destination lookup so an absent route is success.
+// Verify after each attempt, including when an interface disappears during removal.
+func windowsRouteCleanup(prefix string) string {
+	query := fmt.Sprintf("Get-NetRoute -PolicyStore ActiveStore -ErrorAction Stop | Where-Object { $_.DestinationPrefix -eq %s -and $_.RouteMetric -eq %d }", psQuote(prefix), windowsRouteMetric)
+	return fmt.Sprintf(`$remaining = @(%s); for ($attempt = 0; $attempt -lt 3 -and $remaining.Count -gt 0; $attempt++) {
+ $removeError = $null
+ try { $remaining | Remove-NetRoute -Confirm:$false -ErrorAction Stop } catch { $removeError = $_ }
+ $remaining = @(%s)
+ if ($remaining.Count -gt 0) { Start-Sleep -Milliseconds 200 }
+}; if ($remaining.Count -gt 0) {
+ if ($null -ne $removeError) { throw $removeError }
+ throw %s
+}`, query, query, psQuote("Client route still exists after cleanup: "+prefix))
+}
+
+// Upgrade only the exact route undo commands written by earlier releases.
+func windowsRouteUndo(s undoStep) []string {
+	prefix := ""
+	switch {
+	case strings.HasPrefix(s.Key, "route split "):
+		prefix = strings.TrimPrefix(s.Key, "route split ")
+	case strings.HasPrefix(s.Key, "route ipv6 "):
+		prefix = strings.TrimPrefix(s.Key, "route ipv6 ")
+	case strings.HasPrefix(s.Key, "route via "):
+		prefix = strings.TrimPrefix(s.Key, "route via ") + "/32"
+	case strings.HasPrefix(s.Key, "pin "):
+		prefix = strings.TrimPrefix(s.Key, "pin ") + "/32"
+	default:
+		return s.Argv
+	}
+	if _, _, err := net.ParseCIDR(prefix); err != nil {
+		return s.Argv
+	}
+	legacy := powershell(fmt.Sprintf("Get-NetRoute -DestinationPrefix %s -PolicyStore ActiveStore -ErrorAction SilentlyContinue | Where-Object { $_.RouteMetric -eq %d } | Remove-NetRoute -Confirm:$false", psQuote(prefix), windowsRouteMetric))
+	if slices.Equal(s.Argv, legacy) {
+		return powershell(windowsRouteCleanup(prefix) + "; exit 0")
+	}
+	return s.Argv
 }
 
 func (windowsCmds) splitRoutes(ifname string) []routeChange {
@@ -81,7 +122,7 @@ func (windowsCmds) repin(ip string, gw gateway) []string {
 		hop = "0.0.0.0"
 	}
 	// Both the old and new interface are covered by the journal's metric filter.
-	return powershell(fmt.Sprintf("Get-NetRoute -DestinationPrefix %s -PolicyStore ActiveStore -ErrorAction SilentlyContinue | Where-Object { $_.RouteMetric -eq %d } | Remove-NetRoute -Confirm:$false; New-NetRoute -DestinationPrefix %s -InterfaceAlias %s -NextHop %s -RouteMetric %d -PolicyStore ActiveStore | Out-Null", psQuote(ip+"/32"), windowsRouteMetric, psQuote(ip+"/32"), psQuote(gw.Iface), psQuote(hop), windowsRouteMetric))
+	return powershell(windowsRouteCleanup(ip+"/32") + fmt.Sprintf("; New-NetRoute -DestinationPrefix %s -InterfaceAlias %s -NextHop %s -RouteMetric %d -PolicyStore ActiveStore | Out-Null", psQuote(ip+"/32"), psQuote(gw.Iface), psQuote(hop), windowsRouteMetric))
 }
 
 func (windowsCmds) hostRouteQuery(string) []string { return nil }

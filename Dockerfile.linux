@@ -7,7 +7,7 @@ RUN go mod download
 COPY . .
 ARG RUN_TESTS=true
 RUN if [ "$RUN_TESTS" = true ]; then go test -count=1 ./tools/vk-turn-proxy-console ./pkg/vk-auth ./pkg/wireguard-profile ./pkg/proxy/srtpwrap ./pkg/turnbind; fi
-ARG VERSION=v1.2.0
+ARG VERSION=v1.2.1
 RUN set -eu; for arch in amd64 arm64; do \
       mkdir -p "/tmp/bin/$arch"; \
       GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
