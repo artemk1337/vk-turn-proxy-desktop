@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 
 	desktopsettings "github.com/artemk1337/vk-turn-proxy-desktop/pkg/desktop-settings"
@@ -32,21 +33,24 @@ type Preferences struct {
 }
 
 type Profile struct {
-	ID          string                 `json:"id"`
-	Name        string                 `json:"name"`
-	Mode        string                 `json:"mode"`
-	ProfileText string                 `json:"profileText"`
-	WGConfig    string                 `json:"wgConfig"`
-	VKLink      string                 `json:"vkLink"`
-	Endpoint    string                 `json:"endpoint"`
-	ServerName  string                 `json:"serverName"`
-	UseSRTP     bool                   `json:"useSRTP"`
-	Routing     routingpolicy.Settings `json:"routing"`
+	ID             string                 `json:"id"`
+	Name           string                 `json:"name"`
+	Mode           string                 `json:"mode"`
+	ProfileText    string                 `json:"profileText"`
+	WGConfig       string                 `json:"wgConfig"`
+	VKLink         string                 `json:"vkLink"`
+	Endpoint       string                 `json:"endpoint"`
+	ServerName     string                 `json:"serverName"`
+	UseSRTP        bool                   `json:"useSRTP"`
+	Routing        routingpolicy.Settings `json:"routing"`
+	MTU            int                    `json:"mtu"`
+	NumConnections int                    `json:"numConnections"`
+	TURNTransport  string                 `json:"turnTransport"`
 }
 
 func (p *Profile) UnmarshalJSON(data []byte) error {
 	type profileJSON Profile
-	value := profileJSON{UseSRTP: defaults.DefaultTransport == "srtp", Routing: routingpolicy.Settings{LocalDirect: true}}
+	value := profileJSON{MTU: defaults.MTU.Default, NumConnections: defaults.Connections.Default, UseSRTP: defaults.DefaultTransport == "srtp", Routing: routingpolicy.Settings{LocalDirect: true}}
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
@@ -181,6 +185,27 @@ func newProfileID() (string, error) {
 }
 
 func profileArguments(p Profile, session string) ([]string, error) {
+	if p.TURNTransport != "" && p.TURNTransport != "tcp" && p.TURNTransport != "udp" {
+		return nil, errors.New("TURN transport must be TCP or UDP.")
+	}
+	connections := p.NumConnections
+	if connections == 0 {
+		connections = defaults.Connections.Default
+	}
+	if connections < defaults.Connections.Min || connections > defaults.Connections.Max {
+		return nil, errors.New("TURN connections must be between 1 and 120.")
+	}
+	mtu := p.MTU
+	if mtu == 0 {
+		mtu = defaults.MTU.Default
+	}
+	if mtu < defaults.MTU.Min || mtu > defaults.MTU.Max {
+		return nil, errors.New("MTU must be between 1000 and 1400.")
+	}
+	turnArgs := []string{"-conns", strconv.Itoa(connections), "-mtu", strconv.Itoa(mtu)}
+	if p.TURNTransport != "" {
+		turnArgs = append(turnArgs, "-turn-transport", p.TURNTransport)
+	}
 	raw := strings.TrimSpace(p.ProfileText)
 	if p.Mode == "wireguard" {
 		raw = strings.TrimSpace(p.WGConfig)
@@ -200,7 +225,7 @@ func profileArguments(p Profile, session string) ([]string, error) {
 		if name := strings.TrimSpace(p.ServerName); name != "" {
 			args = append(args, "-server", name)
 		}
-		return args, nil
+		return append(args, turnArgs...), nil
 	}
 	if p.Mode != "wireguard" {
 		return nil, errors.New("Unknown profile type.")
@@ -220,5 +245,5 @@ func profileArguments(p Profile, session string) ([]string, error) {
 	if endpoint := strings.TrimSpace(p.Endpoint); endpoint != "" {
 		args = append(args, "-peer", endpoint)
 	}
-	return args, nil
+	return append(args, turnArgs...), nil
 }

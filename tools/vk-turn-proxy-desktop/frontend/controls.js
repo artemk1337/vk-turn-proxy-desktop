@@ -50,3 +50,53 @@ export function initializeSegmentedControl(element) {
     choose(buttons[next]);
   });
 }
+
+export function initializeHelpTooltips(root) {
+  for (const help of root.querySelectorAll('.help')) {
+    const tooltip = help.querySelector('.help-tooltip');
+    const button = help.querySelector('.help-button');
+    if (!tooltip || !button) continue;
+    const supportsPopover = typeof tooltip.showPopover === 'function';
+    if (supportsPopover) tooltip.setAttribute('popover', 'manual');
+
+    const position = () => {
+      const anchor = button.getBoundingClientRect();
+      const margin = 12;
+      const gap = 8;
+      const width = tooltip.offsetWidth;
+      const height = tooltip.offsetHeight;
+      const left = Math.max(margin, Math.min(anchor.left, window.innerWidth - width - margin));
+      const above = anchor.top - height - gap;
+      const top = above >= margin ? above : anchor.bottom + gap;
+      tooltip.style.left = `${left}px`;
+      tooltip.style.top = `${Math.max(margin, Math.min(top, window.innerHeight - height - margin))}px`;
+    };
+    const show = () => {
+      if (supportsPopover && !tooltip.matches(':popover-open')) tooltip.showPopover();
+      position();
+      tooltip.classList.add('is-visible');
+    };
+    const hide = () => {
+      tooltip.classList.remove('is-visible');
+      if (supportsPopover && tooltip.matches(':popover-open')) tooltip.hidePopover();
+    };
+    help.addEventListener('mouseenter', show);
+    help.addEventListener('mouseleave', () => {
+      if (!help.contains(document.activeElement)) hide();
+    });
+    help.addEventListener('focusin', show);
+    help.addEventListener('focusout', () => {
+      if (!help.matches(':hover')) hide();
+    });
+    button.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && tooltip.classList.contains('is-visible')) {
+        event.preventDefault();
+        event.stopPropagation();
+        hide();
+      }
+    });
+    window.addEventListener('resize', hide);
+    root.addEventListener('scroll', hide, true);
+    help.closest('dialog')?.addEventListener('close', hide);
+  }
+}

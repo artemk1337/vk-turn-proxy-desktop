@@ -358,6 +358,34 @@
               </div>
             </div>
           </div>
+          <div class="field">
+            <div class="field-label">
+              <label for="turn-transport" data-i18n="turnTransport">TURN connection</label>
+              <span class="help">
+                <button type="button" class="help-button" aria-describedby="turn-transport-help" data-i18n-aria="turnTransport" aria-label="TURN connection"><span aria-hidden="true">i</span></button>
+                <span id="turn-transport-help" class="help-tooltip" role="tooltip" data-i18n="turnTransportHint">UDP can reduce latency when the network allows it. Reconnect to apply.</span>
+              </span>
+            </div>
+            <select id="turn-transport" aria-describedby="turn-transport-help">
+              <option value="" data-i18n="turnTransportProfile">From profile</option>
+              <option value="tcp">TCP</option>
+              <option value="udp">UDP</option>
+            </select>
+          </div>
+          <label class="field" for="num-connections">
+            <span data-i18n="numConnections">TURN connections</span>
+            <input id="num-connections" type="number" min="1" max="120" step="1" value="30" required />
+          </label>
+          <div class="field">
+            <div class="field-label">
+              <label for="mtu">MTU</label>
+              <span class="help">
+                <button type="button" class="help-button" aria-describedby="mtu-help" data-i18n-aria="mtuHelp" aria-label="MTU help"><span aria-hidden="true">i</span></button>
+                <span id="mtu-help" class="help-tooltip" role="tooltip" data-i18n="mtuHint">Maximum packet size inside the tunnel in bytes. Reconnect to apply.</span>
+              </span>
+            </div>
+            <input id="mtu" type="number" min="1000" max="1400" step="1" value="1280" aria-describedby="mtu-help" required />
+          </div>
           <p id="profile-error" class="form-error" role="alert" hidden></p>
         </div>
         <footer class="dialog-footer">

@@ -66,8 +66,8 @@ func TestDesktopProfileValidationUsesSharedParsers(t *testing.T) {
 	writeFile(t, config, fmt.Sprintf("[Interface]\nPrivateKey = %s\nAddress = 10.66.0.2/32\n[Peer]\nPublicKey = %s\nEndpoint = relay.example:56000\nAllowedIPs = 0.0.0.0/0\n", testKey(1), testKey(2)))
 	writeFile(t, link, "https://vk.ru/call/join/private")
 	for _, args := range [][]string{
-		{"-validate-profile", "-config", writeBackup(t, globals(srtpServer("Home"))), "-server", "Home"},
-		{"-validate-profile", "-wg-config", config, "-vk-link-file", link, "-peer", "override.example:56000", "-server-transport", "dtls"},
+		{"-validate-profile", "-config", writeBackup(t, globals(srtpServer("Home"))), "-server", "Home", "-conns", "30", "-mtu", "1280"},
+		{"-validate-profile", "-wg-config", config, "-vk-link-file", link, "-peer", "override.example:56000", "-server-transport", "dtls", "-conns", "30", "-mtu", "1280", "-turn-transport", "udp"},
 	} {
 		o, err := parseFlags(args)
 		if err != nil {

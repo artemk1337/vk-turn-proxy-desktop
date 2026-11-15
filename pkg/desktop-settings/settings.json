@@ -7,5 +7,7 @@
   "logMaxBytes": 4194304,
   "vkCheckSeconds": 300,
   "defaultTransport": "srtp",
-  "routingUpdateSeconds": 86400
+  "routingUpdateSeconds": 86400,
+  "mtu": {"default": 1280, "min": 1000, "max": 1400},
+  "connections": {"default": 30, "min": 1, "max": 120}
 }

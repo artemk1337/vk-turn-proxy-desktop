@@ -19,6 +19,8 @@ Follow the parent [AGENTS.md](../AGENTS.md).
 ## Shared controls and motion
 
 - Reuse `controls.js`, `dropdown.js` and `controls.css` for segmented selectors, switches, dropdowns and help tooltips. Customize variants through CSS variables.
+- Help tooltips use viewport-clamped fixed positioning and the popover layer where supported. Open on hover or focus, flip below when needed, and dismiss on Escape, scroll, resize and dialog closure.
+- Regression case: the MTU tooltip extended beyond the left edge of the profile dialog and was clipped because its right edge was anchored to the help icon. Position shared tooltips through `initializeHelpTooltips` in `controls.js`, clamp the full tooltip rectangle to the viewport with a margin, and keep it clear of scrolling-container clipping. Escape dismisses the visible tooltip before closing its dialog.
 - Segmented selectors share a sliding indicator and `data-value` selection. Preserve Arrow, Home and End navigation, focus and `aria-pressed`. Switches use native checkboxes with the `switch` role.
 - Plain checkboxes share the `controls.css` style: 18px square, 5px corner radius, semantic input/border colors, blue accent fill and a thin white checkmark. Preserve native checkbox semantics, keyboard focus, disabled/indeterminate states, reduced motion and forced-colors support.
 - GeoIP and GeoSite selection uses separate searchable multi-select dialogs with named subgroups. Show selected items on the routing page. Dialog edits apply on confirmation and are discarded on cancellation or Escape.
@@ -46,7 +48,14 @@ Follow the parent [AGENTS.md](../AGENTS.md).
 ## Verification
 
 - Check both languages and themes at the default 1000×740 and minimum 760×560 window sizes. Exercise profile editing, hover/focus tooltips and keyboard selection.
+- For tooltip changes, verify MTU and TURN help near both window edges and after scrolling the profile dialog at 760×560 and 1000×740, in both languages and themes. Check hover and keyboard focus, full text visibility, above/below placement, and Escape keeping the editor open.
 - Check theme persistence, rapid theme changes, unsupported View Transitions and reduced motion. Verify that theme/language changes preserve draft values and connection state.
 - Verify actual Cyrillic rendering with bundled Inter. Inspect native WebView controls as well as the browser preview, especially selects, popups and focus outlines.
 - Capture screenshots after entrance animations settle. Inspect clipping, overlap, spacing and contrast, and check the console for runtime errors.
 - Rebuild the embedded frontend before relaunching the local Wails preview. Native `--smoke-test` verifies bridge readiness in isolated storage. Keep temporary QA scripts and captures outside the repository.
+
+- The profile editor exposes TURN connection selection for both profile formats. An empty selection preserves the imported transport. TCP and UDP override it on the next connection through `-turn-transport`.
+
+- The profile editor defaults to 30 TURN connections and uses the bounds from the shared desktop settings contract. Pass the saved count through `-conns`, including the macOS helper.
+
+- The profile editor exposes tunnel MTU for both profile formats, defaulting to 1280 with bounds 1000–1400 from shared desktop settings. The saved value overrides imported MTU through `-mtu` on the next connection.

@@ -63,7 +63,7 @@ func TestHelperRoutingSnapshotAndValidation(t *testing.T) {
 }
 
 func TestHelperRequestRejectsPrivilegedArguments(t *testing.T) {
-	for _, args := range [][]string{{"-log", "/tmp/root"}, {"-state-file", "/tmp/state"}, {"-config", "/etc/shadow"}, {"-cleanup"}, {"-peer"}, {"-server", strings.Repeat("x", 4097)}} {
+	for _, args := range [][]string{{"-log", "/tmp/root"}, {"-state-file", "/tmp/state"}, {"-config", "/etc/shadow"}, {"-cleanup"}, {"-peer"}, {"-turn-transport"}, {"-turn-transport", "quic"}, {"-conns"}, {"-conns", "0"}, {"-conns", "121"}, {"-mtu"}, {"-mtu", "999"}, {"-mtu", "1401"}, {"-mtu", "invalid"}, {"-server", strings.Repeat("x", 4097)}} {
 		if err := validateHelperRequest(helperRequest{Profile: []byte("profile"), Args: args}); err == nil {
 			t.Fatalf("accepted %q", args)
 		}
@@ -82,7 +82,7 @@ func TestHelperReadsInputsBeforeElevation(t *testing.T) {
 	if err := os.WriteFile(profile, []byte("private profile"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	options, err := parseFlags([]string{"-config", profile, "-parent-pid", "123", "-stop-file", "/tmp/stop", "-block-ipv6=true", "-desktop-traffic"})
+	options, err := parseFlags([]string{"-config", profile, "-parent-pid", "123", "-stop-file", "/tmp/stop", "-block-ipv6=true", "-desktop-traffic", "-turn-transport", "udp"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,5 +365,14 @@ func TestHelperInstallRollback(t *testing.T) {
 				t.Fatal("did not restart previous daemon")
 			}
 		})
+	}
+}
+
+func TestHelperTURNTransport(t *testing.T) {
+	for _, transport := range []string{"tcp", "udp"} {
+		args := []string{"-server", "test", "-server-transport", "srtp", "-peer", "example.org:443", "-turn-transport", transport, "-conns", "30", "-mtu", "1280", "-block-ipv6=true", "-desktop-traffic=true"}
+		if err := validateHelperRequest(helperRequest{Profile: []byte("profile"), Args: args}); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

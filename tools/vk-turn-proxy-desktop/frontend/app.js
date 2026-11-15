@@ -1,5 +1,5 @@
 import { translate } from './i18n.js';
-import { initializeSegmentedControl, setSegmentedValue } from './controls.js';
+import { initializeHelpTooltips, initializeSegmentedControl, setSegmentedValue } from './controls.js';
 import { revealTheme } from './theme.js';
 import { createNotifications } from './notifications.js';
 import { initializeDropdowns } from './dropdown.js';
@@ -10,6 +10,7 @@ const $ = (id) => document.getElementById(id);
 const powerParticles = createPowerParticles($('power-orbit'));
 const notify = createNotifications($('notifications'));
 const refreshDropdowns = initializeDropdowns(document);
+initializeHelpTooltips(document);
 const maxInputBytes = 4 * 1024 * 1024;
 const icons = {
   power: '<path d="M12 2v10"/><path d="M6.2 5.7a8 8 0 1 0 11.6 0"/>',
@@ -274,6 +275,9 @@ function editorValues() {
     endpoint: $('endpoint').value.trim(),
     serverName: state.profiles.find((profile) => profile.id === editorID)?.serverName || '',
     useSRTP: $('transport').value === 'srtp',
+    turnTransport: $('turn-transport').value,
+    numConnections: Number($('num-connections').value),
+    mtu: Number($('mtu').value),
   };
 }
 
@@ -293,6 +297,13 @@ function openEditor(profile = {}) {
   $('vk-link').value = profile.vkLink || '';
   $('endpoint').value = profile.endpoint || '';
   $('transport').value = profile.useSRTP === false ? 'dtls' : state.defaults?.defaultTransport || 'srtp';
+  $('turn-transport').value = profile.turnTransport || '';
+  $('num-connections').min = state.defaults.connections.min;
+  $('num-connections').max = state.defaults.connections.max;
+  $('num-connections').value = profile.numConnections || state.defaults.connections.default;
+  $('mtu').min = state.defaults.mtu.min;
+  $('mtu').max = state.defaults.mtu.max;
+  $('mtu').value = profile.mtu || state.defaults.mtu.default;
   $('delete-profile').hidden = !editorID;
   $('profile-error').hidden = true;
   setEditorMode(profile.mode || 'link');

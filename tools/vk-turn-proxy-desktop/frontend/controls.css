@@ -136,9 +136,10 @@
   color: var(--accent-text);
 }
 .help-tooltip {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  right: -8px;
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  pointer-events: none;
   z-index: 5;
   width: 245px;
   max-width: calc(100vw - 48px);
@@ -159,8 +160,7 @@
     transform var(--motion-fast) ease,
     visibility var(--motion-fast);
 }
-.help:hover .help-tooltip,
-.help:focus-within .help-tooltip {
+.help-tooltip.is-visible {
   opacity: 1;
   visibility: visible;
   transform: none;

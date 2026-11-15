@@ -20,6 +20,8 @@ type Settings struct {
 	VKCheckSeconds       int       `json:"vkCheckSeconds"`
 	DefaultTransport     string    `json:"defaultTransport"`
 	RoutingUpdateSeconds int       `json:"routingUpdateSeconds"`
+	MTU                  LogLines  `json:"mtu"`
+	Connections          LogLines  `json:"connections"`
 }
 
 type LogLines struct {

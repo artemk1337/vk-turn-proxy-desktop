@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -262,5 +263,121 @@ func TestDisconnectWritesStopFileAndRetainsState(t *testing.T) {
 	a.appendLog("DEFAULT ROUTE → the tunnel")
 	if a.GetState().Connection.State != "disconnecting" {
 		t.Fatal("log restored connected state during cleanup")
+	}
+}
+
+func TestProfileTURNTransport(t *testing.T) {
+	for _, mode := range []string{"link", "wireguard"} {
+		for _, transport := range []string{"", "tcp", "udp", "invalid"} {
+			t.Run(mode+"/"+transport, func(t *testing.T) {
+				p := Profile{ID: "one", Name: "Test", Mode: mode, ProfileText: "profile", WGConfig: "config", VKLink: "https://vk.ru/call/join/test", TURNTransport: transport}
+				root := t.TempDir()
+				if err := saveProfiles(root, profileStore{Profiles: []Profile{p}}); err != nil {
+					t.Fatal(err)
+				}
+				stored, err := loadProfiles(root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				p = stored.Profiles[0]
+				if p.TURNTransport != transport {
+					t.Fatal("transport was not preserved")
+				}
+				args, err := profileArguments(p, root)
+				if transport == "invalid" {
+					if err == nil {
+						t.Fatal("invalid transport accepted")
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				joined := strings.Join(args, " ")
+				if transport == "" {
+					if strings.Contains(joined, "-turn-transport") {
+						t.Fatal("profile transport overridden")
+					}
+				} else if !strings.Contains(joined, "-turn-transport "+transport) {
+					t.Fatal("missing transport override")
+				}
+			})
+		}
+	}
+}
+
+func TestProfileConnectionCount(t *testing.T) {
+	for _, mode := range []string{"link", "wireguard"} {
+		for _, count := range []int{0, 1, 30, 120, -1, 121} {
+			p := Profile{Mode: mode, ProfileText: "profile", WGConfig: "config", VKLink: "https://vk.ru/call/join/test", NumConnections: count}
+			args, err := profileArguments(p, t.TempDir())
+			if count < 0 || count > 120 {
+				if err == nil {
+					t.Fatalf("accepted %d", count)
+				}
+				continue
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			expected := count
+			if expected == 0 {
+				expected = 30
+			}
+			if !strings.Contains(strings.Join(args, " "), "-conns "+strconv.Itoa(expected)) {
+				t.Fatalf("missing count in %v", args)
+			}
+		}
+	}
+	var legacy Profile
+	if err := json.Unmarshal([]byte(`{"name":"legacy"}`), &legacy); err != nil {
+		t.Fatal(err)
+	}
+	if legacy.NumConnections != 30 {
+		t.Fatal("missing legacy default")
+	}
+}
+
+func TestProfileMTU(t *testing.T) {
+	for _, mode := range []string{"link", "wireguard"} {
+		for _, mtu := range []int{0, 1000, 1280, 1400, 999, 1401, -1} {
+			p := Profile{Mode: mode, ProfileText: "profile", WGConfig: "config", VKLink: "https://vk.ru/call/join/test", MTU: mtu}
+			args, err := profileArguments(p, t.TempDir())
+			if mtu != 0 && (mtu < 1000 || mtu > 1400) {
+				if err == nil {
+					t.Fatalf("accepted MTU %d", mtu)
+				}
+				continue
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			expected := mtu
+			if expected == 0 {
+				expected = 1280
+			}
+			if !strings.Contains(strings.Join(args, " "), "-mtu "+strconv.Itoa(expected)) {
+				t.Fatalf("missing MTU in %v", args)
+			}
+		}
+	}
+	var legacy Profile
+	if err := json.Unmarshal([]byte(`{"name":"legacy"}`), &legacy); err != nil {
+		t.Fatal(err)
+	}
+	if legacy.MTU != 1280 {
+		t.Fatal("missing legacy MTU default")
+	}
+	root := t.TempDir()
+	p := Profile{ID: "test", Name: "Test", Mode: "link", MTU: 1350}
+	if err := saveProfiles(root, profileStore{Profiles: []Profile{p}}); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := loadProfiles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Profiles[0].MTU != 1350 {
+		t.Fatal("MTU was not preserved")
 	}
 }

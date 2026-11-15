@@ -34,7 +34,7 @@ func validateDesktopCommandFlags(o *options) error {
 		allowed := name == "validate-vk-cookies" || name == "check-vk-session" || name == "vk-cookie-file"
 		if o.validateProfile {
 			switch name {
-			case "validate-profile", "config", "wg-config", "vk-link-file", "peer", "server-transport", "server":
+			case "validate-profile", "config", "wg-config", "vk-link-file", "peer", "server-transport", "server", "conns", "mtu", "turn-transport":
 				allowed = true
 			default:
 				allowed = false

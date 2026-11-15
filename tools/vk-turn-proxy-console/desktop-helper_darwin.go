@@ -115,7 +115,7 @@ func helperPeerUID(connection *net.UnixConn) (uint32, error) {
 }
 
 func helperRequestFromOptions(o *options) (helperRequest, error) {
-	allowed := map[string]bool{"config": true, "wg-config": true, "vk-link-file": true, "vk-cookie-file": true, "server": true, "server-transport": true, "peer": true, "block-ipv6": true, "stop-file": true, "parent-pid": true, "desktop-traffic": true, "routing-file": true}
+	allowed := map[string]bool{"config": true, "wg-config": true, "vk-link-file": true, "vk-cookie-file": true, "server": true, "server-transport": true, "turn-transport": true, "conns": true, "mtu": true, "peer": true, "block-ipv6": true, "stop-file": true, "parent-pid": true, "routing-file": true, "desktop-traffic": true}
 	for name := range o.set {
 		if !allowed[name] {
 			return helperRequest{}, fmt.Errorf("-%s is unavailable through the desktop helper", name)
@@ -149,7 +149,7 @@ func helperRequestFromOptions(o *options) (helperRequest, error) {
 			return helperRequest{}, err
 		}
 	}
-	for _, pair := range []struct{ name, value string }{{"server", o.serverName}, {"server-transport", o.serverTransport}, {"peer", o.peer}} {
+	for _, pair := range []struct{ name, value string }{{"server", o.serverName}, {"server-transport", o.serverTransport}, {"peer", o.peer}, {"turn-transport", o.turnTransport}, {"conns", strconv.Itoa(o.conns)}, {"mtu", strconv.Itoa(o.mtu)}} {
 		if o.set[pair.name] {
 			request.Args = append(request.Args, "-"+pair.name, pair.value)
 		}
@@ -173,12 +173,35 @@ func validateHelperRequest(request helperRequest) error {
 	if len(request.Profile) == 0 || len(request.Profile) > wizardInputLimit || len(request.Link) > wizardInputLimit || len(request.Cookies) > wizardInputLimit {
 		return errors.New("invalid desktop helper input size")
 	}
-	if len(request.Args) > 8 {
+	if len(request.Args) > 14 {
 		return errors.New("too many desktop helper arguments")
 	}
 	for i := 0; i < len(request.Args); i++ {
 		switch request.Args[i] {
 		case "-block-ipv6=true", "-block-ipv6=false", "-desktop-traffic=true":
+		case "-mtu":
+			i++
+			if i >= len(request.Args) {
+				return errors.New("missing MTU")
+			}
+			mtu, err := strconv.Atoi(request.Args[i])
+			if err != nil || mtu < mtuMinimum || mtu > mtuMaximum {
+				return errors.New("invalid MTU")
+			}
+		case "-conns":
+			i++
+			if i >= len(request.Args) {
+				return errors.New("missing connection count")
+			}
+			count, err := strconv.Atoi(request.Args[i])
+			if err != nil || count < 1 || count > maxConns {
+				return errors.New("invalid connection count")
+			}
+		case "-turn-transport":
+			i++
+			if i >= len(request.Args) || (request.Args[i] != "tcp" && request.Args[i] != "udp") {
+				return errors.New("invalid TURN transport")
+			}
 		case "-server", "-server-transport", "-peer":
 			i++
 			if i >= len(request.Args) || len(request.Args[i]) > 4096 {
