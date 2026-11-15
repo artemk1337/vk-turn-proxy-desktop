@@ -104,7 +104,6 @@ Function .onInit
     SetErrorLevel 1633
     Abort
   ${EndIf}
-  !insertmacro RequireClosed
 FunctionEnd
 
 Function un.onInit
@@ -120,6 +119,17 @@ FunctionEnd
 Section "$(InstallFiles)" SEC_APPLICATION
   SectionIn RO
   SetShellVarContext all
+  InitPluginsDir
+  SetOutPath "$PLUGINSDIR"
+  File "stop-client.ps1"
+  stopClient:
+    nsExec::ExecToStack '"$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\stop-client.ps1" -Directory "$INSTDIR"'
+    Pop $0
+    Pop $1
+    ${If} $0 != 0
+      MessageBox MB_ICONEXCLAMATION|MB_RETRYCANCEL "$(CloseClient)" /SD IDCANCEL IDRETRY stopClient
+      Abort
+    ${EndIf}
   Push "$INSTDIR\vk-turn-proxy-windows.exe"
   Call RequireIdleExecutable
   Push "$INSTDIR\vk-turn-proxy-console.exe"

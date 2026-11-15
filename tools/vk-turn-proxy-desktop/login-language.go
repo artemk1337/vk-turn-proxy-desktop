@@ -20,7 +20,6 @@ func loginText(language, text string) string {
 		"WebView2 navigation":                                                        "Переход в WebView2",
 		"WebView2 cookies":                                                           "Cookies WebView2",
 		"VK website login could not start. Install python3-gi and gir1.2-webkit2-4.1 or import cookies": "Не удалось запустить вход в VK. Установите python3-gi и gir1.2-webkit2-4.1 или импортируйте cookies",
-		"website login is supported on Windows and Linux; import VK cookies":                            "Вход через сайт доступен в Windows и Linux. Импортируйте cookies VK",
 	}
 	if translated, ok := translations[text]; ok {
 		return translated

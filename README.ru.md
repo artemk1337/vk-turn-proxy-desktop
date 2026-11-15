@@ -24,7 +24,7 @@
 Установите `.deb` в Debian или Ubuntu и откройте **VK TURN Proxy** из меню приложений
 
 ```sh
-sudo apt install ./vk-turn-proxy-linux-v1.3.0-amd64.deb
+sudo apt install ./vk-turn-proxy-linux-v1.4.0-amd64.deb
 ```
 
 Для portable-версии распакуйте `.tar.gz` и запустите `./vk-turn-proxy-desktop`. Нужны GTK 3, WebKitGTK 4.1, iproute2 и polkit. Для входа через сайт дополнительно нужны Python 3, PyGObject и `gir1.2-webkit2-4.1`. При подключении приложение запросит права администратора.
@@ -33,7 +33,7 @@ sudo apt install ./vk-turn-proxy-linux-v1.3.0-amd64.deb
 
 Скачайте ZIP **arm64** для Apple Silicon или **amd64** для Intel. Распакуйте архив и перенесите **VK TURN Proxy.app** в «Программы». Нужна macOS 12 или новее. При подключении приложение запросит права администратора, при отключении и выходе восстановит настройки сети.
 
-Для авторизации VK используйте **Импорт cookies**. Интерфейс использует системный WKWebView. Сборки macOS подписаны ad-hoc. Первый запуск может потребовать подтверждения в «Системные настройки → Конфиденциальность и безопасность». Для удаления выключите **Запуск при входе** и удалите приложение.
+Для авторизации нажмите **Войти в VK**. Вход откроется в отдельном окне системного WKWebView с временной сессией. Через **Импорт cookies** можно загрузить существующую сессию. Сборки macOS подписаны ad-hoc. Первый запуск может потребовать подтверждения в «Системные настройки → Конфиденциальность и безопасность». Для удаления выключите **Запуск при входе** и удалите приложение.
 
 ## Подключение
 
@@ -74,8 +74,8 @@ sudo "/Applications/VK TURN Proxy.app/Contents/MacOS/vk-turn-proxy-console" -wiz
 
 
 ```sh
-docker build --build-arg VERSION=v1.3.0 --build-arg RUN_TESTS=false --output dist/windows -f Dockerfile.windows .
-docker build --target packages --build-arg VERSION=v1.3.0 --build-arg RUN_TESTS=false --output dist/linux -f Dockerfile.linux .
+docker build --build-arg VERSION=v1.4.0 --build-arg RUN_TESTS=false --output dist/windows -f Dockerfile.windows .
+docker build --target packages --build-arg VERSION=v1.4.0 --build-arg RUN_TESTS=false --output dist/linux -f Dockerfile.linux .
 ```
 
 В `dist` появятся ZIP и установщики Windows, архивы и DEB-пакеты Linux для x64 и ARM64 с контрольными суммами.
@@ -83,7 +83,7 @@ docker build --target packages --build-arg VERSION=v1.3.0 --build-arg RUN_TESTS=
 Пакеты macOS собираются на Mac с Xcode Command Line Tools и Apple SDK
 
 ```sh
-sh installer/macos/package.sh v1.3.0 dist/macos
+sh installer/macos/package.sh v1.4.0 dist/macos
 ```
 
 Команда создаёт ZIP для Intel и Apple Silicon с ad-hoc подписью и контрольными суммами.

@@ -60,10 +60,12 @@
           data-i18n-aria="connection"
         >
           <div class="connection-core">
-            <div class="power-orbit" id="power-orbit" aria-hidden="true">
-              <div class="power-symbol" data-icon="power"></div>
-              <span class="orbit-spinner"></span>
-            </div>
+            <button type="button" class="power-orbit" id="power-orbit" disabled aria-label="Connect">
+              <span class="power-fill" aria-hidden="true"></span>
+              <span class="power-symbol" data-icon="power" aria-hidden="true"></span>
+              <span id="connect-label">Connect</span>
+              <span class="orbit-spinner" aria-hidden="true"></span>
+            </button>
             <h1 id="connection-status" aria-live="polite">Disconnected</h1>
             <p id="connection-hint" class="status-hint">Select a profile to connect</p>
             <div class="profile-controls">
@@ -91,9 +93,6 @@
                 <span data-icon="plus"></span>
               </button>
             </div>
-            <button id="connect" class="primary connect-button" disabled>
-              <span id="connect-label">Connect</span><span data-icon="arrow"></span>
-            </button>
           </div>
           <div class="account-section">
             <div class="account-identity">

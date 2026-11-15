@@ -166,9 +166,11 @@ function renderConnection() {
   $('connect-label').textContent = t(
     active ? (phase === 'connected' ? 'disconnect' : 'cancelConnection') : 'connect',
   );
-  $('connect').disabled = pending || phase === 'disconnecting' || (!active && !selected);
-  $('connect').classList.toggle('disconnect', active);
-  $('connect').setAttribute('aria-busy', String(pending || busy));
+  $('power-orbit').disabled = pending || phase === 'disconnecting' || (!active && !selected);
+  $('power-orbit').setAttribute('aria-label', $('connect-label').textContent);
+  $('power-orbit').setAttribute('aria-pressed', String(active));
+  $('power-orbit').setAttribute('aria-busy', String(pending || busy));
+  $('power-orbit').dataset.phase = phase;
   $('power-orbit').classList.toggle('busy', busy);
   $('power-orbit').classList.toggle('connected', phase === 'connected');
   $('status-dot').classList.toggle('connected', phase === 'connected');
@@ -421,7 +423,7 @@ $('profile-dialog').addEventListener('close', () => {
   $('profile-form').reset();
   editorID = '';
 });
-$('connect').addEventListener('click', () =>
+$('power-orbit').addEventListener('click', () =>
   action(() =>
     mutate(['disconnected', 'failed'].includes(state.connection.state) ? 'Connect' : 'Disconnect'),
   ),

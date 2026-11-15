@@ -9,5 +9,6 @@ Follow the root [AGENTS.md](../../AGENTS.md).
 - Persist `activeID` when selecting a profile and restore it on startup. Preserve existing profile metadata when editing the visible fields.
 - Backend progress follows retained console phases. Keep log bytes and lines bounded, preserve the reader's viewport, and keep theme/language changes independent from connection and editor state.
 - Closing hides the window only while a tray host is available. Exit requests the console stop file and waits for cleanup. Linux elevates only the console through pkexec.
+- macOS website login uses an isolated nonpersistent WKWebView on the AppKit main queue. Closing or cancellation discards the web session. Only the required VK cookies reach the existing private account store.
 - macOS elevates only the console through the native administrator prompt. A private Unix socket accepts root peers, streams logs and requests shutdown when the authorization launcher exits. The launcher owns pending-prompt cancellation and the temporary socket directory. User autostart is an owned LaunchAgent loaded at sign-in.
 - Run `go test ./tools/vk-turn-proxy-desktop`. Build with `-tags desktop,production` and add `webkit2_41` on Linux. `--smoke-test` opens an isolated native window and verifies frontend bridge readiness before exiting.

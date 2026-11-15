@@ -17,6 +17,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: Test installer client shutdown
+        shell: powershell
+        run: ./installer/stop-client-test.ps1
       - name: Embed desktop manifest
         run: |
           go run github.com/akavel/rsrc@v0.10.2 -manifest tools/vk-turn-proxy-windows/app.manifest -o tools/vk-turn-proxy-desktop/rsrc_windows_amd64.syso
