@@ -12,7 +12,7 @@ RUN go mod download
 COPY . .
 RUN mkdir -p /bin-out && CGO_ENABLED=1 go build -tags desktop,production,webkit2_41 -trimpath \
       -ldflags "-s -w" -o /bin-out/vk-turn-proxy-desktop ./tools/vk-turn-proxy-desktop
-ARG VERSION=v1.4.0
+ARG VERSION=v1.4.1
 RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
       -o /bin-out/vk-turn-proxy-console ./tools/vk-turn-proxy-console
 
@@ -28,7 +28,7 @@ RUN go mod download
 COPY . .
 RUN mkdir -p /bin-out && CGO_ENABLED=1 go build -tags desktop,production,webkit2_41 -trimpath \
       -ldflags "-s -w" -o /bin-out/vk-turn-proxy-desktop ./tools/vk-turn-proxy-desktop
-ARG VERSION=v1.4.0
+ARG VERSION=v1.4.1
 RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
       -o /bin-out/vk-turn-proxy-console ./tools/vk-turn-proxy-console
 

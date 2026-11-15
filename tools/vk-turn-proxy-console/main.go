@@ -210,6 +210,9 @@ func main() {
 }
 
 func realMain(args []string) int {
+	if handled, code := platformDesktopHelper(args); handled {
+		return code
+	}
 	ignoreBrokenPipe() // before the first byte is written: see the function
 	o, err := parseFlags(args)
 	if errors.Is(err, flag.ErrHelp) {

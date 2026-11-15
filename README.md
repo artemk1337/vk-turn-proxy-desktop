@@ -24,16 +24,20 @@ Approve the administrator prompt to manage the VPN tunnel.
 Install the `.deb` on Debian or Ubuntu and open **VK TURN Proxy** from the applications menu
 
 ```sh
-sudo apt install ./vk-turn-proxy-linux-v1.4.0-amd64.deb
+sudo apt install ./vk-turn-proxy-linux-v1.4.1-amd64.deb
 ```
 
 For portable use, extract the `.tar.gz` and run `./vk-turn-proxy-desktop`. It requires GTK 3, WebKitGTK 4.1, iproute2 and polkit. Website login additionally uses Python 3, PyGObject and `gir1.2-webkit2-4.1`. The app requests administrator access when connecting.
 
 ### macOS
 
-Download the **arm64** ZIP for Apple Silicon or **amd64** for Intel. Extract it and move **VK TURN Proxy.app** to Applications. Requires macOS 12 or later. The app requests administrator authorization when connecting and restores network settings when disconnecting or exiting.
+Download the **arm64** ZIP for Apple Silicon or **amd64** for Intel. Extract it and move **VK TURN Proxy.app** to Applications. Requires macOS 12 or later. The first connection requests administrator authorization to install a system helper. Later connections use the installed helper without another password prompt. Updating the helper requires authorization again. Disconnecting or exiting restores network settings.
 
-Use **Sign in to VK** to authenticate in an isolated system WKWebView window, or **Import cookies** to load an existing session. The macOS packages use ad-hoc signing. First launch can require approval in System Settings → Privacy & Security. To remove the app, turn off **Launch at sign-in** and delete the application.
+Use **Sign in to VK** to authenticate in an isolated system WKWebView window, or **Import cookies** to load an existing session. The macOS packages use ad-hoc signing. First launch can require approval in System Settings → Privacy & Security. To remove the app, disconnect, turn off **Launch at sign-in**, remove the system helper with the command below, and delete the application.
+
+```sh
+sudo /Library/PrivilegedHelperTools/io.github.artemk1337.vkturnproxy.helper --desktop-helper-uninstall
+```
 
 ## Connect
 
@@ -74,8 +78,8 @@ The desktop applications embed the same HTML/CSS/JavaScript frontend in a Wails 
 
 
 ```sh
-docker build --build-arg VERSION=v1.4.0 --build-arg RUN_TESTS=false --output dist/windows -f Dockerfile.windows .
-docker build --target packages --build-arg VERSION=v1.4.0 --build-arg RUN_TESTS=false --output dist/linux -f Dockerfile.linux .
+docker build --build-arg VERSION=v1.4.1 --build-arg RUN_TESTS=false --output dist/windows -f Dockerfile.windows .
+docker build --target packages --build-arg VERSION=v1.4.1 --build-arg RUN_TESTS=false --output dist/linux -f Dockerfile.linux .
 ```
 
 Produces Windows ZIPs/installers and Linux archives/DEB packages for x64 and ARM64, with checksums.
@@ -83,7 +87,7 @@ Produces Windows ZIPs/installers and Linux archives/DEB packages for x64 and ARM
 Build macOS packages on a Mac with Xcode Command Line Tools and the Apple SDK
 
 ```sh
-sh installer/macos/package.sh v1.4.0 dist/macos
+sh installer/macos/package.sh v1.4.1 dist/macos
 ```
 
 Produces ad-hoc signed application ZIPs for Intel and Apple Silicon with checksums.
