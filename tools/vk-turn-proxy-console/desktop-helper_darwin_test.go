@@ -19,7 +19,48 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	routingpolicy "github.com/artemk1337/vk-turn-proxy-desktop/pkg/routing-policy"
 )
+
+func TestHelperRoutingSnapshotAndValidation(t *testing.T) {
+	directory := t.TempDir()
+	profile := filepath.Join(directory, "profile")
+	routing := filepath.Join(directory, "routing.json")
+	policy := []byte(`{"mode":"exclude","prefixes":["203.0.113.0/24"],"localDirect":true}`)
+	for path, data := range map[string][]byte{profile: []byte("private profile"), routing: policy} {
+		if err := os.WriteFile(path, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	options, err := parseFlags([]string{"-config", profile, "-routing-file", routing, "-block-ipv6=true"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := helperRequestFromOptions(options)
+	if err != nil || !bytes.Equal(request.Routing, policy) {
+		t.Fatalf("routing snapshot missing: %v", err)
+	}
+	if err := validateHelperRequest(request); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.Join(request.Args, " "), directory) {
+		t.Fatal("user routing path was passed to the privileged console")
+	}
+	request.Routing = []byte(`{"mode":"include","prefixes":["::/0"]}`)
+	if err := validateHelperRequest(request); err == nil {
+		t.Fatal("helper accepted an invalid routing policy")
+	}
+	request.Routing = make([]byte, routingpolicy.MaxPolicyBytes+1)
+	if err := validateHelperRequest(request); err == nil {
+		t.Fatal("helper accepted an oversized routing policy")
+	}
+	request.Routing = nil
+	request.Args = []string{"-routing-file", "/tmp/untrusted"}
+	if err := validateHelperRequest(request); err == nil {
+		t.Fatal("helper accepted an untrusted routing path in Args")
+	}
+}
 
 func TestHelperRequestRejectsPrivilegedArguments(t *testing.T) {
 	for _, args := range [][]string{{"-log", "/tmp/root"}, {"-state-file", "/tmp/state"}, {"-config", "/etc/shadow"}, {"-cleanup"}, {"-peer"}, {"-server", strings.Repeat("x", 4097)}} {

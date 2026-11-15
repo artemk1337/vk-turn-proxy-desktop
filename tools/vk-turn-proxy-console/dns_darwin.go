@@ -14,6 +14,7 @@ package main
 // manual override on the service does not hide.
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 )
@@ -36,13 +37,21 @@ func newSystemDNS(j *journal, run func([]string) (string, error), logf func(stri
 func (d *darwinDNS) originals() []string { return d.orig }
 
 func (d *darwinDNS) apply(_ string, servers []string) error {
+	strict := len(servers) == 1 && servers[0] == "127.0.0.1"
 	out, err := d.run([]string{"networksetup", "-listallnetworkservices"})
 	if err != nil {
 		return err
 	}
-	for _, svc := range parseNetworkServices(out) {
+	services := parseNetworkServices(out)
+	if strict && len(services) == 0 {
+		return fmt.Errorf("no network service is available for policy DNS")
+	}
+	for _, svc := range services {
 		cur, err := d.run([]string{"networksetup", "-getdnsservers", svc})
 		if err != nil {
+			if strict {
+				return fmt.Errorf("reading DNS for %s: %w", svc, err)
+			}
 			d.logf("dns: %s: %v", svc, err)
 			continue
 		}
@@ -55,6 +64,9 @@ func (d *darwinDNS) apply(_ string, servers []string) error {
 			return err
 		}
 		if _, err := d.run(append([]string{"networksetup", "-setdnsservers", svc}, servers...)); err != nil {
+			if strict {
+				return fmt.Errorf("setting policy DNS for %s: %w", svc, err)
+			}
 			d.logf("dns: %s: %v", svc, err)
 		}
 	}

@@ -15,6 +15,7 @@
     <link rel="preload" href="fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="controls.css" />
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="routing.css" />
   </head>
   <body>
     <div class="app-shell">
@@ -26,6 +27,9 @@
         <nav aria-label="Navigation" data-i18n-aria="navigation">
           <button class="nav-item active" data-page="connection" aria-current="page">
             <span data-icon="power"></span><span data-i18n="connection">Connection</span>
+          </button>
+          <button class="nav-item" data-page="routing">
+            <span data-icon="routing"></span><span data-i18n="routing">Routing</span>
           </button>
           <button class="nav-item" data-page="logs">
             <span data-icon="log"></span><span data-i18n="logs">Log</span>
@@ -132,6 +136,39 @@
           <div class="log-footer">
             <span id="log-count"></span
             ><button id="follow-log" class="text-button" data-i18n="latest" hidden>Go to latest</button>
+          </div>
+        </section>
+
+        <section id="routing-page" class="page" hidden>
+          <header class="page-heading"><h1 data-i18n="routing">Routing</h1></header>
+          <label class="field"><span data-i18n="profile">Profile</span><select id="routing-profile"></select></label>
+          <p id="routing-empty" class="routing-hint" data-i18n="routingAddProfile" hidden>Add a connection profile first.</p>
+          <div id="routing-fields">
+            <section class="routing-section">
+              <h2 data-i18n="routingMode">Mode</h2>
+              <div id="routing-mode" class="segmented-control routing-modes" role="group" data-segmented data-i18n-aria="routingMode" aria-label="Mode">
+                <button type="button" data-value="" data-i18n="routingAll">All through VPN</button>
+                <button type="button" data-value="exclude" data-i18n="routingExclude">VPN with exceptions</button>
+                <button type="button" data-value="include" data-i18n="routingInclude">Selected through VPN</button>
+              </div>
+              <p id="routing-summary" class="routing-hint"></p>
+            </section>
+            <section id="routing-rules" class="routing-section">
+              <div class="routing-row"><div><h2 data-i18n="routingGeoIP">GeoIP regions</h2><p class="routing-hint" data-i18n="routingGeoIPHint">IP address location by country</p></div><button type="button" class="secondary" data-routing-picker="geoip" data-i18n="routingChooseRegions">Choose regions</button></div>
+              <div id="routing-selected-geoip" class="routing-selected"></div>
+              <div class="routing-row"><div><h2 data-i18n="routingGeoSite">GeoSite sets</h2><p class="routing-hint" data-i18n="routingGeoSiteHint">Service domains and categories</p></div><button type="button" class="secondary" data-routing-picker="geosite" data-i18n="routingChooseSets">Choose sets</button></div>
+              <div id="routing-selected-geosite" class="routing-selected"></div>
+              <p class="routing-hint routing-domain-hint" data-i18n="routingDomainHint">Domain rules follow system DNS responses. Apps using their own encrypted DNS or cached addresses may bypass these rules. Routing supports IPv4.</p>
+              <label class="field routing-custom"><span data-i18n="routingCustom">Custom domains, IP addresses and subnets</span><textarea id="routing-custom" rows="3" spellcheck="false" placeholder="example.org&#10;192.0.2.0/24&#10;203.0.113.10"></textarea></label>
+              <label class="routing-check"><input type="checkbox" id="routing-local" /><span data-i18n="routingLocal">Local network always direct</span></label>
+            </section>
+            <section class="routing-section">
+              <div class="routing-row"><h2 data-i18n="routingDatabases">Database updates</h2><button type="button" id="routing-sync" class="secondary" data-i18n="routingSync">Synchronize</button></div>
+              <p class="routing-hint" data-i18n="routingSources">GeoIP and GeoSite from Loyalsoldier</p>
+              <div class="routing-row routing-updates"><label class="routing-check"><input type="checkbox" id="routing-auto" /><span data-i18n="routingAuto">Update automatically every day</span></label><span id="routing-updated" class="routing-hint" role="status"></span></div>
+            </section>
+            <p id="routing-error" class="form-error" role="alert" hidden></p>
+            <footer class="routing-footer"><span id="routing-save-hint" class="routing-hint" role="status"></span><button type="button" id="routing-save" class="primary" data-i18n="save">Save</button></footer>
           </div>
         </section>
 
@@ -330,6 +367,17 @@
           ><button type="button" class="secondary close-dialog" data-i18n="cancel">Cancel</button
           ><button type="submit" class="primary" data-i18n="save">Save</button>
         </footer>
+      </form>
+    </dialog>
+
+    <dialog id="routing-picker" aria-labelledby="routing-picker-title">
+      <form id="routing-picker-form">
+        <header class="dialog-heading"><h2 id="routing-picker-title">GeoIP regions</h2><button type="button" class="icon-button close-dialog" data-i18n-aria="close" aria-label="Close"><span data-icon="close"></span></button></header>
+        <div class="dialog-body routing-picker-body">
+          <label class="field"><span data-i18n="routingSearch">Search</span><input id="routing-picker-search" type="search" autocomplete="off" data-i18n-placeholder="routingSearchHint" placeholder="Name or code…" /></label>
+          <div id="routing-picker-list" role="group" data-i18n-aria="routingAvailable" aria-label="Available sets"></div>
+        </div>
+        <footer class="dialog-footer"><span id="routing-picker-count" class="routing-hint" aria-live="polite"></span><span class="spacer"></span><button type="button" class="secondary close-dialog" data-i18n="cancel">Cancel</button><button type="submit" class="primary" data-i18n="routingApply">Apply</button></footer>
       </form>
     </dialog>
 

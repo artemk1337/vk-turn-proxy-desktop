@@ -5,6 +5,7 @@ This repository develops the desktop GUI and console client for Windows, Linux a
 - `pkg/desktop-settings/settings.json` defines desktop languages, themes, transport defaults, log limits and VK check interval for both clients. Update this shared contract when changing these parameters. Saved profiles and the VK account have the same controls on both platforms.
 - `pkg/proxy` and `pkg/turnbind` own the shared transport and WireGuard bind.
 - `pkg/wireguard-profile` converts supported WireGuard configs into connection profiles.
+- `pkg/routing-data` loads and atomically caches the Loyalsoldier GeoIP/GeoSite catalogs. `pkg/routing-policy` validates profile rules, matches domains and aggregates IPv4 route plans.
 - `tools/vk-turn-proxy-console` owns profile parsing, the setup wizard, tunnel, routes, DNS and crash recovery.
 - `tools/vk-turn-proxy-desktop` owns the shared Wails v2 GUI, embedded HTML/CSS/JavaScript and fonts, preferences, profiles and platform session control. See its local [AGENTS.md](tools/vk-turn-proxy-desktop/AGENTS.md).
 - `tools/vk-turn-proxy-windows` retains legacy Walk sources and isolated WebView2 authentication support. See its local [AGENTS.md](tools/vk-turn-proxy-windows/AGENTS.md).
@@ -15,6 +16,8 @@ This repository develops the desktop GUI and console client for Windows, Linux a
 Persist confirmation that the TURN cache is reusable only after all allocation attempts have confirmed releases and transport sessions have joined. Consume the release confirmation durably before reusing cached credentials. Unknown or interrupted releases retain the quota cooldown.
 
 Journal network changes before applying them. Route VK and TURN traffic through the physical gateway. Disconnect and parent exit run normal cleanup. Keep profile keys out of logs. Treat WireGuard configs as data and report unsupported directives before connecting. Each platform’s GUI and CLI share a machine-wide lock and recovery journal. Linux and macOS Wails run as the user. Linux elevates the console through polkit. macOS installs a root-owned LaunchDaemon helper through an administrator prompt, then uses an authenticated Unix socket for connections. The helper accepts bounded profile data and allowlisted VPN parameters, runs its protected console copy and keeps journal/cache paths fixed. macOS keeps its protected journal and credential cache in `/var/db/vk-turn-proxy-desktop`; parent exit and helper connection closure trigger normal cleanup.
+
+Routing policies are per-profile snapshots. Missing routing settings preserve full-tunnel behavior. Apply IPv4 route plans through the recovery journal and keep IPv6 blocked. GeoSite and custom domains use the console's loopback UDP/TCP DNS forwarder and install routes before returning DNS answers, including HTTPS/SVCB IPv4 hints. Physical transport pins retain priority. Keep local destinations direct when requested and configured VPN DNS reachable through the tunnel. Download routing databases as the GUI user and retain the previous complete pair on update failure. Pass bounded resolved policy data through the macOS helper into its protected session directory.
 
 ## Documentation and releases
 

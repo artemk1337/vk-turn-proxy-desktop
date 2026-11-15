@@ -4,7 +4,7 @@
 
 [English](README.md)
 
-![Главное окно на русском языке](docs/images/main-window-ru.png)
+![Главное окно на русском языке, тёмная тема](docs/images/main-window-ru.png)
 
 ## Установка
 
@@ -24,7 +24,7 @@
 Установите `.deb` в Debian или Ubuntu и откройте **VK TURN Proxy** из меню приложений
 
 ```sh
-sudo apt install ./vk-turn-proxy-linux-v1.5.0-amd64.deb
+sudo apt install ./vk-turn-proxy-linux-v1.6.0-amd64.deb
 ```
 
 Для portable-версии распакуйте `.tar.gz` и запустите `./vk-turn-proxy-desktop`. Нужны GTK 3, WebKitGTK 4.1, iproute2 и polkit. Для входа через сайт дополнительно нужны Python 3, PyGObject и `gir1.2-webkit2-4.1`. При подключении приложение запросит права администратора.
@@ -50,6 +50,20 @@ sudo /Library/PrivilegedHelperTools/io.github.artemk1337.vkturnproxy.helper --de
 
 В **Настройках** доступны язык, тема, автозапуск и лимит журнала. По умолчанию сохраняются 1000 строк, диапазон настройки от 100 до 10 000, дополнительное ограничение размера составляет 4 МиБ. Закрытие окна сворачивает клиент в трей, если он доступен. **Выход** отключает туннель и закрывает приложение.
 
+## Маршрутизация
+
+Откройте **Маршрутизацию**, выберите сохранённый профиль и режим
+
+- **Всё через VPN** направляет весь трафик в туннель.
+- **VPN с исключениями** направляет выбранные сети и сайты напрямую.
+- **Выбранное через VPN** направляет выбранные сети и сайты в туннель, остальной трафик идёт напрямую.
+
+Добавьте свои домены, IPv4-адреса или подсети CIDR. **Регионы GeoIP** позволяют выбрать сети по странам. **Наборы GeoSite** позволяют выбрать группы доменов. Для каждого списка открывается отдельное окно с поиском, подгруппами и выбором нескольких элементов. Подтвердите выбор и сохраните настройки маршрутизации профиля. Изменения применяются при следующем подключении. Параметр **Локальная сеть всегда напрямую** сохраняет прямой доступ к локальным адресам.
+
+Нажмите **Синхронизировать**, чтобы скачать базы GeoIP и GeoSite. Автоматическое обновление выполняется ежедневно, пока приложение открыто. При ошибке обновления сохраняются последние загруженные базы. Источники данных — [Loyalsoldier GeoIP](https://github.com/Loyalsoldier/geoip) и [Loyalsoldier GeoSite](https://github.com/Loyalsoldier/v2ray-rules-dat).
+
+Маршрутизация поддерживает IPv4. Во время подключения IPv6 остаётся заблокированным. Доменные правила используют системный DNS через локальный UDP/TCP-сервер на `127.0.0.1:53`. Приложения со своим DoH/DoT или закешированными DNS-ответами могут обходить доменные правила. Изученные IP-маршруты сохраняются до отключения, поэтому сайты с общим IP используют один маршрут.
+
 ## Терминал
 
 В Windows откройте **Terminal setup** из меню «Пуск» или запустите PowerShell от имени администратора в папке portable-версии
@@ -72,14 +86,16 @@ sudo "/Applications/VK TURN Proxy.app/Contents/MacOS/vk-turn-proxy-console" -wiz
 
 Для portable-версии Linux используйте `sudo ./vk-turn-proxy-console -wizard`. Следуйте шагам мастера. **Ctrl+C** отключает туннель. Если профиль требует входа в VK, добавьте `-vk-cookie-file .\cookies.txt`.
 
+Для готовых правил маршрутизации добавьте `-routing-file routing.json -block-ipv6`. JSON содержит `mode` (`include` или `exclude`), IPv4-подсети `prefixes`, доменные правила `domains` с полями `type` (`full`, `domain`, `plain` или `regex`) и `value`, а также `localDirect`. Настольное приложение преобразует выбранные GeoIP и GeoSite в эти правила.
+
 ## Сборка
 
 Все платформы используют общий интерфейс HTML/CSS/JavaScript, встроенный в Go-приложение на Wails v2. Интерфейс и шрифты входят в приложение. Сборка через Node.js не требуется. Для Linux используются CGO, GTK 3 и WebKitGTK 4.1. Docker собирает обе архитектуры штатными компиляторами через эмуляцию buildx.
 
 
 ```sh
-docker build --build-arg VERSION=v1.5.0 --build-arg RUN_TESTS=false --output dist/windows -f Dockerfile.windows .
-docker build --target packages --build-arg VERSION=v1.5.0 --build-arg RUN_TESTS=false --output dist/linux -f Dockerfile.linux .
+docker build --build-arg VERSION=v1.6.0 --build-arg RUN_TESTS=false --output dist/windows -f Dockerfile.windows .
+docker build --target packages --build-arg VERSION=v1.6.0 --build-arg RUN_TESTS=false --output dist/linux -f Dockerfile.linux .
 ```
 
 В `dist` появятся ZIP и установщики Windows, архивы и DEB-пакеты Linux для x64 и ARM64 с контрольными суммами.
@@ -87,7 +103,7 @@ docker build --target packages --build-arg VERSION=v1.5.0 --build-arg RUN_TESTS=
 Пакеты macOS собираются на Mac с Xcode Command Line Tools и Apple SDK
 
 ```sh
-sh installer/macos/package.sh v1.5.0 dist/macos
+sh installer/macos/package.sh v1.6.0 dist/macos
 ```
 
 Команда создаёт ZIP для Intel и Apple Silicon с ad-hoc подписью и контрольными суммами.

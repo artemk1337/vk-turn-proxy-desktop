@@ -11,14 +11,15 @@ import (
 var settingsJSON []byte
 
 type Settings struct {
-	Languages        [2]string `json:"languages"`
-	Themes           [2]string `json:"themes"`
-	DefaultLanguage  string    `json:"defaultLanguage"`
-	DefaultTheme     string    `json:"defaultTheme"`
-	LogLines         LogLines  `json:"logLines"`
-	LogMaxBytes      int       `json:"logMaxBytes"`
-	VKCheckSeconds   int       `json:"vkCheckSeconds"`
-	DefaultTransport string    `json:"defaultTransport"`
+	Languages            [2]string `json:"languages"`
+	Themes               [2]string `json:"themes"`
+	DefaultLanguage      string    `json:"defaultLanguage"`
+	DefaultTheme         string    `json:"defaultTheme"`
+	LogLines             LogLines  `json:"logLines"`
+	LogMaxBytes          int       `json:"logMaxBytes"`
+	VKCheckSeconds       int       `json:"vkCheckSeconds"`
+	DefaultTransport     string    `json:"defaultTransport"`
+	RoutingUpdateSeconds int       `json:"routingUpdateSeconds"`
 }
 
 type LogLines struct {

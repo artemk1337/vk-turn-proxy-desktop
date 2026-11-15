@@ -90,6 +90,11 @@ func (a *App) Connect() (State, error) {
 	if err != nil {
 		return a.snapshot(), err
 	}
+	routingArgs, err := a.routingArguments(selected.Routing, directory)
+	if err != nil {
+		return a.snapshot(), err
+	}
+	args = append(args, routingArgs...)
 	if a.cookies != "" {
 		cookiePath := filepath.Join(directory, "cookies.txt")
 		if err := writePrivate(cookiePath, []byte(a.cookies)); err != nil {
@@ -182,6 +187,8 @@ func readBackendLogs(source io.Reader, appendLine func(string)) {
 
 func logPhase(line string) string {
 	switch {
+	case strings.Contains(line, "routing: ready"):
+		return "connected"
 	case strings.Contains(line, "DEFAULT ROUTE") && strings.Contains(line, "tunnel"):
 		return "connected"
 	case strings.Contains(line, "first connection up"), strings.Contains(line, "tunnel:"):

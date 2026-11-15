@@ -46,6 +46,7 @@ type options struct {
 	defaultRouteWait time.Duration
 	blockIPv6        bool
 	keepHosts, route string
+	routingFile      string
 
 	credCache, stateFile, cookieFile string
 	pidFile                          string
@@ -87,6 +88,7 @@ func parseFlags(args []string) (*options, error) {
 	fs.BoolVar(&o.blockIPv6, "block-ipv6", false, "send IPv6 into the tunnel too, where it is dropped (the tunnel carries IPv4 only; without it IPv6 goes around the tunnel)")
 	fs.StringVar(&o.keepHosts, "keep-hosts", "", "comma-separated hosts that stay on the physical path (the SSH client is kept by itself)")
 	fs.StringVar(&o.route, "route", "", "-default-route=false: comma-separated hosts routed into the tunnel")
+	fs.StringVar(&o.routingFile, "routing-file", "", "JSON IPv4 routing policy with GeoIP prefixes and GeoSite domain rules")
 	fs.StringVar(&o.credCache, "cred-cache", defaultCredCache, "the console's own TURN credential cache (never the profile's)")
 	fs.StringVar(&o.stateFile, "state-file", defaultStateFile, "where the changes to the system are journaled with their undo")
 	fs.BoolVar(&o.cleanup, "cleanup", false, "take back what a crashed run left (the state file) and exit")
@@ -412,6 +414,7 @@ func noCaptchaUI(string) (string, error) {
 }
 
 type console struct {
+	routing *policyRuntime
 	o       *options
 	st      settings
 	dnsPlan dnsPlan
@@ -445,7 +448,17 @@ type console struct {
 }
 
 func (c *console) run(ctx context.Context) int {
-	if why := v6BlockRefusal(c.o.blockIPv6, c.o.defaultRoute, sshPeers(), ipv6Networks()); why != "" {
+	var err error
+	c.routing, err = loadPolicyRuntime(c.o.routingFile)
+	if err != nil {
+		log.Printf("routing: %v", err)
+		return 2
+	}
+	if c.routing != nil && !c.o.blockIPv6 {
+		log.Print("routing: -block-ipv6 is required because routing policies carry IPv4 only")
+		return 2
+	}
+	if why := v6BlockRefusal(c.o.blockIPv6, c.o.defaultRoute || c.routing != nil, sshPeers(), ipv6Networks()); why != "" {
 		log.Print(why)
 		return 2
 	}
@@ -476,12 +489,16 @@ func (c *console) run(ctx context.Context) int {
 	c.pin = newPinner(hostCmds, runCmd, c.j, log.Printf)
 	c.pin.tunnel = tunnelNet
 	c.applyDNSSplit(netDNS) // the proxy's servers, the tunnel's never pinned — and where they cross (dnsplan.go)
-	c.pin.blockV6 = c.o.blockIPv6 && c.o.defaultRoute
-	c.pin.enable(c.o.defaultRoute)
+	c.pin.blockV6 = c.o.blockIPv6 && (c.o.defaultRoute || c.routing != nil)
+	c.pin.enable(c.o.defaultRoute || c.routing != nil)
 	c.pin.setGateway(gw, up, interfaceSubnets(gw.Iface))
 	proxy.SetDialHook(c.pin.hook)
 	installResolver(c.src, c.pin.ensure)
-	if c.o.defaultRoute {
+	if c.routing != nil {
+		proxy.SetDialHook(c.policyDialHook)
+		installResolver(c.src, c.ensurePhysicalIP)
+	}
+	if c.o.defaultRoute || c.routing != nil {
 		c.prePin()
 	}
 
@@ -511,7 +528,12 @@ func (c *console) run(ctx context.Context) int {
 	if !c.waitHandshake(ctx) {
 		return 0
 	}
-	if c.o.defaultRoute {
+	if c.routing != nil {
+		if err := c.activatePolicy(ctx); err != nil {
+			log.Printf("routing: %v", err)
+			return 1
+		}
+	} else if c.o.defaultRoute {
 		ok, err := c.switchDefaultRoute(ctx)
 		if err != nil {
 			log.Print(err)
@@ -845,7 +867,7 @@ func (c *console) onNetwork(ev netEvents) {
 		c.pin.setGateway(ev.cur, true, interfaceSubnets(ev.cur.Iface))
 		c.applyDNSSplit(c.dns.refresh(ev.cur))
 		for _, s := range c.src.list() {
-			_ = c.pin.ensure(s)
+			_ = c.ensurePhysicalIP(s)
 		}
 	default:
 		if c.ticks++; ev.up && c.ticks%5 == 0 {
@@ -987,6 +1009,9 @@ func (c *console) stopMonitor() {
 // device (on FreeBSD the interface goes with it), whatever is left.
 func (c *console) shutdown() {
 	c.stopMonitor()
+	if c.routing != nil {
+		c.routing.close()
+	}
 	if l, ok := c.dns.(*lockedDNS); ok {
 		l.close() // a handler the stop could not wait out changes the DNS no more
 	}

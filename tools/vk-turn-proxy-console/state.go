@@ -25,11 +25,12 @@ import (
 
 // undoStep takes one change back: a command to run, or a file to put back.
 type undoStep struct {
-	Key     string   `json:"key"`               // what the change is — the handle to drop the step by
-	Argv    []string `json:"argv,omitempty"`    // a command, or …
-	File    string   `json:"file,omitempty"`    // … a file whose content goes back
-	Content string   `json:"content,omitempty"` // the content it had
-	Perm    uint32   `json:"perm,omitempty"`
+	PolicyRoutes *policyRouteBatch `json:"policyRoutes,omitempty"`
+	Key          string            `json:"key"`               // what the change is — the handle to drop the step by
+	Argv         []string          `json:"argv,omitempty"`    // a command, or …
+	File         string            `json:"file,omitempty"`    // … a file whose content goes back
+	Content      string            `json:"content,omitempty"` // the content it had
+	Perm         uint32            `json:"perm,omitempty"`
 }
 
 type stateDoc struct {
@@ -70,16 +71,25 @@ func (j *journal) add(s undoStep) error {
 
 // done drops the undo of a change taken back.
 func (j *journal) done(key string) error {
+	return j.doneBatch(map[string]bool{key: true})
+}
+
+func (j *journal) doneBatch(keys map[string]bool) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	kept := j.doc.Undo[:0]
+	previous := j.doc.Undo
+	kept := make([]undoStep, 0, len(previous))
 	for _, x := range j.doc.Undo {
-		if x.Key != key {
+		if !keys[x.Key] {
 			kept = append(kept, x)
 		}
 	}
 	j.doc.Undo = kept
-	return j.writeLocked()
+	if err := j.writeLocked(); err != nil {
+		j.doc.Undo = previous
+		return err
+	}
+	return nil
 }
 
 // has reports whether an undo is recorded under key.
@@ -150,6 +160,9 @@ func alreadyGone(err error) bool {
 
 // runUndo carries one step out; run executes a command.
 func runUndo(s undoStep, run func(argv []string) error) error {
+	if s.PolicyRoutes != nil {
+		return runPolicyBatch(*s.PolicyRoutes, false, hostCmds, run)
+	}
 	if s.File != "" {
 		perm := os.FileMode(s.Perm)
 		if perm == 0 {
@@ -170,6 +183,7 @@ func (j *journal) undoAll(run func(argv []string) error, logf func(string, ...an
 	steps := append([]undoStep(nil), j.doc.Undo...)
 	j.mu.Unlock()
 	var failed []undoStep
+	done := make(map[string]bool)
 	for i := len(steps) - 1; i >= 0; i-- {
 		s := steps[i]
 		if err := runUndo(s, run); err != nil && !alreadyGone(err) {
@@ -177,7 +191,11 @@ func (j *journal) undoAll(run func(argv []string) error, logf func(string, ...an
 			failed = append(failed, s)
 			continue
 		}
-		_ = j.done(s.Key)
+		done[s.Key] = true
+	}
+	if err := j.doneBatch(done); err != nil {
+		logf("state: %v", err)
+		return steps
 	}
 	return failed
 }
@@ -194,12 +212,16 @@ func (j *journal) undoPrefix(prefix string, run func(argv []string) error, logf 
 		}
 	}
 	j.mu.Unlock()
+	done := make(map[string]bool)
 	for i := len(steps) - 1; i >= 0; i-- {
 		if err := runUndo(steps[i], run); err != nil && !alreadyGone(err) {
 			logf("undo %s: %v", steps[i].Key, err)
 			continue
 		}
-		_ = j.done(steps[i].Key)
+		done[steps[i].Key] = true
+	}
+	if err := j.doneBatch(done); err != nil {
+		logf("state: %v", err)
 	}
 }
 

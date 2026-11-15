@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	desktopsettings "github.com/artemk1337/vk-turn-proxy-desktop/pkg/desktop-settings"
+	routingpolicy "github.com/artemk1337/vk-turn-proxy-desktop/pkg/routing-policy"
 )
 
 const maxInput = 4 << 20
@@ -23,27 +24,29 @@ const maxStore = 32 << 20
 var defaults = desktopsettings.Defaults()
 
 type Preferences struct {
-	Language  string `json:"language"`
-	Theme     string `json:"theme"`
-	AutoStart bool   `json:"autoStart"`
-	LogLines  int    `json:"logLines"`
+	Language          string `json:"language"`
+	Theme             string `json:"theme"`
+	AutoStart         bool   `json:"autoStart"`
+	LogLines          int    `json:"logLines"`
+	RoutingAutoUpdate bool   `json:"routingAutoUpdate"`
 }
 
 type Profile struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Mode        string `json:"mode"`
-	ProfileText string `json:"profileText"`
-	WGConfig    string `json:"wgConfig"`
-	VKLink      string `json:"vkLink"`
-	Endpoint    string `json:"endpoint"`
-	ServerName  string `json:"serverName"`
-	UseSRTP     bool   `json:"useSRTP"`
+	ID          string                 `json:"id"`
+	Name        string                 `json:"name"`
+	Mode        string                 `json:"mode"`
+	ProfileText string                 `json:"profileText"`
+	WGConfig    string                 `json:"wgConfig"`
+	VKLink      string                 `json:"vkLink"`
+	Endpoint    string                 `json:"endpoint"`
+	ServerName  string                 `json:"serverName"`
+	UseSRTP     bool                   `json:"useSRTP"`
+	Routing     routingpolicy.Settings `json:"routing"`
 }
 
 func (p *Profile) UnmarshalJSON(data []byte) error {
 	type profileJSON Profile
-	value := profileJSON{UseSRTP: defaults.DefaultTransport == "srtp"}
+	value := profileJSON{UseSRTP: defaults.DefaultTransport == "srtp", Routing: routingpolicy.Settings{LocalDirect: true}}
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
@@ -71,7 +74,7 @@ func normalizePreferences(p Preferences) Preferences {
 }
 
 func loadPreferences(root string) (Preferences, error) {
-	p := normalizePreferences(Preferences{Language: systemLanguage()})
+	p := normalizePreferences(Preferences{Language: systemLanguage(), RoutingAutoUpdate: true})
 	file, err := os.Open(filepath.Join(root, "preferences.json"))
 	if errors.Is(err, os.ErrNotExist) {
 		return p, nil
@@ -88,7 +91,7 @@ func loadPreferences(root string) (Preferences, error) {
 		return p, errors.New("Preferences exceed the supported size.")
 	}
 	if err := json.Unmarshal(raw, &p); err != nil {
-		return normalizePreferences(Preferences{Language: systemLanguage()}), errors.New("Preferences could not be loaded. Default settings were restored.")
+		return normalizePreferences(Preferences{Language: systemLanguage(), RoutingAutoUpdate: true}), errors.New("Preferences could not be loaded. Default settings were restored.")
 	}
 	return normalizePreferences(p), nil
 }
@@ -142,6 +145,9 @@ func validateProfiles(store profileStore) error {
 		}
 		if p.Mode != "link" && p.Mode != "wireguard" {
 			return errors.New("Unknown profile type.")
+		}
+		if err := p.Routing.Validate(); err != nil {
+			return err
 		}
 		ids[p.ID] = true
 	}

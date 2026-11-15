@@ -14,6 +14,7 @@ import (
 	"time"
 
 	desktopsettings "github.com/artemk1337/vk-turn-proxy-desktop/pkg/desktop-settings"
+	routingdata "github.com/artemk1337/vk-turn-proxy-desktop/pkg/routing-data"
 	vkauth "github.com/artemk1337/vk-turn-proxy-desktop/pkg/vk-auth"
 )
 
@@ -38,6 +39,8 @@ type VKState struct {
 
 type App struct {
 	mu            sync.Mutex
+	routingMu     sync.Mutex
+	routingData   *routingdata.Store
 	root          string
 	backend       string
 	preferences   Preferences
@@ -78,7 +81,7 @@ func newApp(root, backend string, quit func()) (*App, error) {
 		cookies = nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	a := &App{root: root, backend: backend, preferences: prefs, profiles: profiles,
+	a := &App{root: root, backend: backend, preferences: prefs, profiles: profiles, routingData: routingdata.NewStore(filepath.Join(root, "routing-data")),
 		cookies: string(cookies), vk: VKState{Status: "unknown"}, connection: "disconnected",
 		logs: Logs{Lines: []string{}}, ctx: ctx, cancel: cancel, quit: quit, frontendReady: make(chan struct{})}
 	if warning != nil {
@@ -101,7 +104,11 @@ func (a *App) snapshot() State {
 	if a.connection == "connected" {
 		traffic = a.traffic.rate(time.Now())
 	}
-	return State{Preferences: a.preferences, Defaults: defaults, Profiles: slices.Clone(a.profiles.Profiles),
+	profiles := slices.Clone(a.profiles.Profiles)
+	for i := range profiles {
+		profiles[i].Routing = cloneRouting(profiles[i].Routing)
+	}
+	return State{Preferences: a.preferences, Defaults: defaults, Profiles: profiles,
 		ActiveID: a.profiles.ActiveID, Connection: ConnectionState{State: a.connection, TrafficBytesPerSecond: traffic}, VK: vk, Error: a.lastError}
 }
 
@@ -151,6 +158,7 @@ func (a *App) SavePreferences(p Preferences) (State, error) {
 }
 
 func (a *App) SaveProfile(p Profile) (State, error) {
+	p.Routing = cloneRouting(p.Routing)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.session != nil {
@@ -317,6 +325,7 @@ func (a *App) checkVK() {
 
 func (a *App) startChecks() {
 	a.checkVK()
+	go a.routingUpdates()
 	go func() {
 		ticker := time.NewTicker(time.Duration(defaults.VKCheckSeconds) * time.Second)
 		defer ticker.Stop()

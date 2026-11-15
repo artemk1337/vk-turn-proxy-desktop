@@ -5,19 +5,24 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"strings"
 )
 
 type windowsDNS struct {
-	j    *journal
-	run  func([]string) (string, error)
-	orig []string
+	j      *journal
+	run    func([]string) (string, error)
+	orig   []string
+	policy map[string]windowsPolicyDNS
 }
 
 func (d *windowsDNS) originals() []string { return d.orig }
 
 func (d *windowsDNS) apply(tun string, servers []string) error {
+	if len(servers) == 1 && servers[0] == "127.0.0.1" {
+		return d.applyPolicy()
+	}
 	if len(servers) == 0 {
 		return fmt.Errorf("the tunnel DNS list is empty")
 	}
@@ -39,6 +44,26 @@ func (d *windowsDNS) apply(tun string, servers []string) error {
 
 func (d *windowsDNS) refresh(gw gateway) []string {
 	if gw.Iface == "" {
+		return d.orig
+	}
+	if d.policy != nil {
+		if err := d.applyPolicy(); err != nil {
+			log.Printf("dns: configuring a new interface for policy DNS: %v", err)
+		}
+		for _, state := range d.policy {
+			if state.Alias == gw.Iface {
+				if state.Static {
+					d.orig = append([]string{}, state.Servers...)
+				} else {
+					path := "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\" + state.GUID
+					out, err := d.run(powershell("$value = (Get-ItemProperty -LiteralPath " + psQuote(path) + " -ErrorAction Stop).DhcpNameServer; ConvertTo-Json -Compress -InputObject @($value -split '[,;\\s]+' | Where-Object { $_ })"))
+					if err == nil {
+						d.orig = parseWindowsDNS(out)
+					}
+				}
+				return d.orig
+			}
+		}
 		return d.orig
 	}
 	script := "ConvertTo-Json -Compress -InputObject @((Get-DnsClientServerAddress -InterfaceAlias " + psQuote(gw.Iface) + " -AddressFamily IPv4).ServerAddresses)"

@@ -4,6 +4,7 @@ import { revealTheme } from './theme.js';
 import { createNotifications } from './notifications.js';
 import { initializeDropdowns } from './dropdown.js';
 import { createPowerParticles } from './particles.js';
+import { createRouting } from './routing.js';
 
 const $ = (id) => document.getElementById(id);
 const powerParticles = createPowerParticles($('power-orbit'));
@@ -12,6 +13,7 @@ const refreshDropdowns = initializeDropdowns(document);
 const maxInputBytes = 4 * 1024 * 1024;
 const icons = {
   power: '<path d="M12 2v10"/><path d="M6.2 5.7a8 8 0 1 0 11.6 0"/>',
+  routing: '<path d="M5 4v12a4 4 0 0 0 4 4h2M5 8h10a4 4 0 0 1 4 4v8M2 7l3-3 3 3M16 17l3 3 3-3"/>',
   log: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/>',
   settings:
     '<path d="m9.2 3-.6 2.2-2 .9-2-.6-2.1 3.6L4 10.7v2.6l-1.5 1.6 2.1 3.6 2-.6 2 .9.6 2.2h4.2l.6-2.2 2-.9 2 .6 2.1-3.6-1.5-1.6v-2.6l1.5-1.6L18.1 5l-2 .6-2-.9-.6-2.2z"/><circle cx="11.3" cy="12" r="3"/>',
@@ -53,6 +55,7 @@ let mutationVersion = 0;
 let connectionFlash;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const t = (key, values) => translate(state.preferences.language, key, values);
+const routing = createRouting({ getState: () => state, backend, mutate, t, showError, refreshDropdowns });
 
 function renderIcon(element, name) {
   if (element.dataset.renderedIcon === name) return;
@@ -217,13 +220,14 @@ function render() {
   renderPreferences();
   renderProfiles();
   renderConnection();
+  routing.render();
   $('log-count').textContent = `${displayedLogs.length} ${t('lines')}`;
 }
 
 function switchPage(next) {
   connectionFlash?.cancel();
   page = next;
-  for (const name of ['connection', 'logs', 'settings']) $(`${name}-page`).hidden = name !== page;
+  for (const name of ['connection', 'routing', 'logs', 'settings']) $(`${name}-page`).hidden = name !== page;
   document.querySelectorAll('[data-page]').forEach((button) => {
     const active = button.dataset.page === page;
     button.classList.toggle('active', active);
@@ -232,6 +236,7 @@ function switchPage(next) {
   });
   renderConnection();
   if (page === 'logs') refreshLogs().catch(showError);
+  if (page === 'routing') routing.open();
 }
 
 function savePreferences(change, source) {
@@ -259,6 +264,7 @@ function savePreferences(change, source) {
 
 function editorValues() {
   return {
+    ...state.profiles.find((profile) => profile.id === editorID),
     id: editorID,
     name: $('profile-name').value.trim(),
     mode: editorMode,

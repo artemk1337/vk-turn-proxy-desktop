@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	routingpolicy "github.com/artemk1337/vk-turn-proxy-desktop/pkg/routing-policy"
 	"golang.org/x/sys/unix"
 )
 
@@ -28,13 +29,14 @@ const helperSocket = helperDirectory + "/control.sock"
 const helperExecutable = "/Library/PrivilegedHelperTools/io.github.artemk1337.vkturnproxy.helper"
 const helperPlist = "/Library/LaunchDaemons/io.github.artemk1337.vkturnproxy.helper.plist"
 const helperLabel = "io.github.artemk1337.vkturnproxy.helper"
-const helperRequestLimit = 18 * 1024 * 1024
+const helperRequestLimit = 64 * 1024 * 1024
 
 type helperRequest struct {
 	Args      []string `json:"args"`
 	Profile   []byte   `json:"profile"`
 	Link      []byte   `json:"link,omitempty"`
 	Cookies   []byte   `json:"cookies,omitempty"`
+	Routing   []byte   `json:"routing,omitempty"`
 	WireGuard bool     `json:"wireguard"`
 }
 
@@ -113,7 +115,7 @@ func helperPeerUID(connection *net.UnixConn) (uint32, error) {
 }
 
 func helperRequestFromOptions(o *options) (helperRequest, error) {
-	allowed := map[string]bool{"config": true, "wg-config": true, "vk-link-file": true, "vk-cookie-file": true, "server": true, "server-transport": true, "peer": true, "block-ipv6": true, "stop-file": true, "parent-pid": true, "desktop-traffic": true}
+	allowed := map[string]bool{"config": true, "wg-config": true, "vk-link-file": true, "vk-cookie-file": true, "server": true, "server-transport": true, "peer": true, "block-ipv6": true, "stop-file": true, "parent-pid": true, "desktop-traffic": true, "routing-file": true}
 	for name := range o.set {
 		if !allowed[name] {
 			return helperRequest{}, fmt.Errorf("-%s is unavailable through the desktop helper", name)
@@ -141,6 +143,12 @@ func helperRequestFromOptions(o *options) (helperRequest, error) {
 			return helperRequest{}, err
 		}
 	}
+	if o.routingFile != "" {
+		request.Routing, err = readRoutingPolicy(o.routingFile)
+		if err != nil {
+			return helperRequest{}, err
+		}
+	}
 	for _, pair := range []struct{ name, value string }{{"server", o.serverName}, {"server-transport", o.serverTransport}, {"peer", o.peer}} {
 		if o.set[pair.name] {
 			request.Args = append(request.Args, "-"+pair.name, pair.value)
@@ -154,6 +162,14 @@ func helperRequestFromOptions(o *options) (helperRequest, error) {
 }
 
 func validateHelperRequest(request helperRequest) error {
+	if len(request.Routing) > routingpolicy.MaxPolicyBytes {
+		return errors.New("invalid desktop helper routing size")
+	}
+	if len(request.Routing) > 0 {
+		if _, err := decodeRoutingPolicy(request.Routing); err != nil {
+			return err
+		}
+	}
 	if len(request.Profile) == 0 || len(request.Profile) > wizardInputLimit || len(request.Link) > wizardInputLimit || len(request.Cookies) > wizardInputLimit {
 		return errors.New("invalid desktop helper input size")
 	}
@@ -335,7 +351,7 @@ func runHelperConsole(ctx context.Context, connection *net.UnixConn, encoder *js
 	for _, file := range []struct {
 		name, flag string
 		data       []byte
-	}{{"profile", "-config", request.Profile}, {"link", "-vk-link-file", request.Link}, {"cookies", "-vk-cookie-file", request.Cookies}} {
+	}{{"profile", "-config", request.Profile}, {"link", "-vk-link-file", request.Link}, {"cookies", "-vk-cookie-file", request.Cookies}, {"routing", "-routing-file", request.Routing}} {
 		if len(file.data) == 0 {
 			continue
 		}

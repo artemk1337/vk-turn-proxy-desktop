@@ -4,7 +4,7 @@ Desktop VPN client that sends WireGuard traffic through VK TURN relays. Availabl
 
 [Русский](README.ru.md)
 
-![Main window in English](docs/images/main-window-en.png)
+![Main window in English, dark theme](docs/images/main-window-en.png)
 
 ## Install
 
@@ -24,7 +24,7 @@ Approve the administrator prompt to manage the VPN tunnel.
 Install the `.deb` on Debian or Ubuntu and open **VK TURN Proxy** from the applications menu
 
 ```sh
-sudo apt install ./vk-turn-proxy-linux-v1.5.0-amd64.deb
+sudo apt install ./vk-turn-proxy-linux-v1.6.0-amd64.deb
 ```
 
 For portable use, extract the `.tar.gz` and run `./vk-turn-proxy-desktop`. It requires GTK 3, WebKitGTK 4.1, iproute2 and polkit. Website login additionally uses Python 3, PyGObject and `gir1.2-webkit2-4.1`. The app requests administrator access when connecting.
@@ -50,6 +50,20 @@ Manual configs require one peer, IPv4 and `AllowedIPs = 0.0.0.0/0`. SRTP require
 
 **Settings** contains language, theme, autostart and the log limit on all platforms. The log retains 1000 lines by default, adjustable from 100 to 10,000, with a separate 4 MiB cap. Closing the window hides it in the tray when available. **Exit** disconnects and closes the app.
 
+## Routing
+
+Open **Routing**, select a saved profile and choose a mode
+
+- **All through VPN** sends all traffic through the tunnel.
+- **VPN with exceptions** sends selected networks and sites directly.
+- **Selected through VPN** sends selected networks and sites through the tunnel and other traffic directly.
+
+Add custom domains, IPv4 addresses or CIDR subnets. **GeoIP regions** selects networks by country. **GeoSite sets** selects groups of domains. Each opens a separate searchable window with subgroups and multiple selection. Confirm the selection, then save the profile's routing settings. Changes take effect on the next connection. **Local network always direct** keeps local destinations outside the tunnel.
+
+Click **Synchronize** to download the GeoIP and GeoSite databases. Automatic updates run daily while the app is open. A failed update retains the last downloaded databases. The sources are [Loyalsoldier GeoIP](https://github.com/Loyalsoldier/geoip) and [Loyalsoldier GeoSite](https://github.com/Loyalsoldier/v2ray-rules-dat).
+
+Routing supports IPv4. IPv6 remains blocked while connected. Domain rules use system DNS through a local UDP/TCP forwarder on `127.0.0.1:53`. Applications using their own DoH/DoT resolver or cached DNS answers can bypass domain rules. Learned IP routes remain until disconnect, so sites sharing an IP share its route.
+
 ## Terminal
 
 On Windows, open **Terminal setup** from the Start menu, or run PowerShell as Administrator in the portable folder
@@ -72,14 +86,16 @@ sudo "/Applications/VK TURN Proxy.app/Contents/MacOS/vk-turn-proxy-console" -wiz
 
 For the Linux portable package, use `sudo ./vk-turn-proxy-console -wizard`. Follow the setup steps. Press **Ctrl+C** to disconnect. Add `-vk-cookie-file .\cookies.txt` if your profile requires VK login.
 
+For resolved routing rules, add `-routing-file routing.json -block-ipv6`. The JSON policy contains `mode` (`include` or `exclude`), IPv4 `prefixes`, `domains` with `type` (`full`, `domain`, `plain` or `regex`) and `value`, and `localDirect`. GeoIP and GeoSite selections are resolved into this policy by the desktop app.
+
 ## Build
 
 The desktop applications embed the same HTML/CSS/JavaScript frontend in a Wails v2 Go executable. The frontend is bundled with the application, including its fonts, and requires no Node.js build step. Linux builds use CGO with GTK 3 and WebKitGTK 4.1. Docker builds both CPU architectures with native toolchains through buildx emulation.
 
 
 ```sh
-docker build --build-arg VERSION=v1.5.0 --build-arg RUN_TESTS=false --output dist/windows -f Dockerfile.windows .
-docker build --target packages --build-arg VERSION=v1.5.0 --build-arg RUN_TESTS=false --output dist/linux -f Dockerfile.linux .
+docker build --build-arg VERSION=v1.6.0 --build-arg RUN_TESTS=false --output dist/windows -f Dockerfile.windows .
+docker build --target packages --build-arg VERSION=v1.6.0 --build-arg RUN_TESTS=false --output dist/linux -f Dockerfile.linux .
 ```
 
 Produces Windows ZIPs/installers and Linux archives/DEB packages for x64 and ARM64, with checksums.
@@ -87,7 +103,7 @@ Produces Windows ZIPs/installers and Linux archives/DEB packages for x64 and ARM
 Build macOS packages on a Mac with Xcode Command Line Tools and the Apple SDK
 
 ```sh
-sh installer/macos/package.sh v1.5.0 dist/macos
+sh installer/macos/package.sh v1.6.0 dist/macos
 ```
 
 Produces ad-hoc signed application ZIPs for Intel and Apple Silicon with checksums.

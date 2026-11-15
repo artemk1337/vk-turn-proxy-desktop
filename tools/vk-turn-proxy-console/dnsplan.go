@@ -102,6 +102,9 @@ func sameList(a, b []string) bool {
 // tunnelDNS is the tunnel's servers the console points the system at — none
 // when it leaves the system's DNS alone.
 func (c *console) tunnelDNS() []string {
+	if c.routing != nil {
+		return []string{"127.0.0.1"}
+	}
 	if !c.dnsPlan.managed {
 		return nil
 	}

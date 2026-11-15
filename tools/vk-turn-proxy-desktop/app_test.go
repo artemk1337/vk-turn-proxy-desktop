@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	routingdata "github.com/artemk1337/vk-turn-proxy-desktop/pkg/routing-data"
 )
 
 func testApp(t *testing.T) *App {
@@ -19,7 +21,7 @@ func testApp(t *testing.T) *App {
 	if err := secureDirectory(root); err != nil {
 		t.Fatal(err)
 	}
-	return &App{root: root, profiles: profileStore{Profiles: []Profile{}}, preferences: normalizePreferences(Preferences{}),
+	return &App{root: root, routingData: routingdata.NewStore(filepath.Join(root, "routing-data")), profiles: profileStore{Profiles: []Profile{}}, preferences: normalizePreferences(Preferences{}),
 		ctx: ctx, cancel: cancel, quit: func() {}, connection: "disconnected", logs: Logs{Lines: []string{}}, frontendReady: make(chan struct{})}
 }
 
