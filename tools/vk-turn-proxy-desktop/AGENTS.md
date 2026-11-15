@@ -7,6 +7,7 @@ Follow the root [AGENTS.md](../../AGENTS.md).
 - Frontend design, shared controls, animations and WebView checks follow [frontend/AGENTS.md](frontend/AGENTS.md).
 - Preserve existing Windows DPAPI profile/account files and Linux private JSON/account files. Presentation preferences contain no authentication data. Secrets cross the local Wails bridge and private session files only.
 - Persist `activeID` when selecting a profile and restore it on startup. Preserve existing profile metadata when editing the visible fields.
+- The console streams `desktop-traffic <txBytes> <rxBytes>` once per second through its existing private log pipe when `-desktop-traffic` is enabled. Consume these counters before the visible log, expose their measured rate in connection state, and reset stale or ended sessions.
 - Backend progress follows retained console phases. Keep log bytes and lines bounded, preserve the reader's viewport, and keep theme/language changes independent from connection and editor state.
 - Closing hides the window only while a tray host is available. Exit requests the console stop file and waits for cleanup. Linux elevates only the console through pkexec.
 - macOS website login uses an isolated nonpersistent WKWebView on the AppKit main queue. Closing or cancellation discards the web session. Only the required VK cookies reach the existing private account store.

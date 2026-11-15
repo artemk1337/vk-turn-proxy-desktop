@@ -3,8 +3,10 @@ import { initializeSegmentedControl, setSegmentedValue } from './controls.js';
 import { revealTheme } from './theme.js';
 import { createNotifications } from './notifications.js';
 import { initializeDropdowns } from './dropdown.js';
+import { createPowerParticles } from './particles.js';
 
 const $ = (id) => document.getElementById(id);
+const powerParticles = createPowerParticles($('power-orbit'));
 const notify = createNotifications($('notifications'));
 const refreshDropdowns = initializeDropdowns(document);
 const maxInputBytes = 4 * 1024 * 1024;
@@ -48,6 +50,8 @@ let lastBackendError = '';
 let preferencesQueue = Promise.resolve();
 let savingPreferences = 0;
 let mutationVersion = 0;
+let connectionFlash;
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const t = (key, values) => translate(state.preferences.language, key, values);
 
 function renderIcon(element, name) {
@@ -76,8 +80,24 @@ function showError(error, target) {
 
 function applyState(next) {
   if (!next) return;
+  const justConnected = next.connection.state === 'connected' &&
+    ['credentials', 'relay', 'handshake'].includes(state.connection.state);
+  if (next.connection.state !== 'connected') connectionFlash?.cancel();
   state = next;
   render();
+  if (justConnected && page === 'connection' && !document.hidden && !reducedMotion.matches) {
+    powerParticles.burst();
+    connectionFlash?.cancel();
+    connectionFlash = $('power-flash-band').animate(
+      [
+        { transform: 'translateX(-120%)', opacity: 0 },
+        { opacity: 0.7, offset: 0.2 },
+        { opacity: 0.7, offset: 0.7 },
+        { transform: 'translateX(120%)', opacity: 0 },
+      ],
+      { duration: 750, easing: 'ease-out' },
+    );
+  }
   if (state.error && state.error !== lastBackendError) showError(state.error);
   lastBackendError = state.error || '';
 }
@@ -170,9 +190,9 @@ function renderConnection() {
   $('power-orbit').setAttribute('aria-label', $('connect-label').textContent);
   $('power-orbit').setAttribute('aria-pressed', String(active));
   $('power-orbit').setAttribute('aria-busy', String(pending || busy));
-  $('power-orbit').dataset.phase = phase;
   $('power-orbit').classList.toggle('busy', busy);
   $('power-orbit').classList.toggle('connected', phase === 'connected');
+  powerParticles.update(phase === 'connected' && page === 'connection', state.connection.trafficBytesPerSecond);
   $('status-dot').classList.toggle('connected', phase === 'connected');
   $('status-dot').classList.toggle('busy', busy);
   $('footer-status').textContent = t(phase);
@@ -201,6 +221,7 @@ function render() {
 }
 
 function switchPage(next) {
+  connectionFlash?.cancel();
   page = next;
   for (const name of ['connection', 'logs', 'settings']) $(`${name}-page`).hidden = name !== page;
   document.querySelectorAll('[data-page]').forEach((button) => {
@@ -209,6 +230,7 @@ function switchPage(next) {
     if (active) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');
   });
+  renderConnection();
   if (page === 'logs') refreshLogs().catch(showError);
 }
 
@@ -457,6 +479,11 @@ $('follow-log').addEventListener('click', () => {
   $('log-output').scrollTop = $('log-output').scrollHeight;
 });
 $('exit').addEventListener('click', () => action(() => backend().Exit()));
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) connectionFlash?.cancel();
+});
+reducedMotion.addEventListener('change', () => connectionFlash?.cancel());
 
 render();
 try {

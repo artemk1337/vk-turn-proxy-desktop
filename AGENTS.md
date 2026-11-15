@@ -12,6 +12,8 @@ This repository develops the desktop GUI and console client for Windows, Linux a
 - `installer` owns platform installation and removal. `Dockerfile.windows` and `Dockerfile.linux` build release packages.
 - `installer/macos` builds native Apple SDK application bundles. See its local [AGENTS.md](installer/macos/AGENTS.md).
 
+Persist confirmation that the TURN cache is reusable only after all allocation attempts have confirmed releases and transport sessions have joined. Consume the release confirmation durably before reusing cached credentials. Unknown or interrupted releases retain the quota cooldown.
+
 Journal network changes before applying them. Route VK and TURN traffic through the physical gateway. Disconnect and parent exit run normal cleanup. Keep profile keys out of logs. Treat WireGuard configs as data and report unsupported directives before connecting. Each platform’s GUI and CLI share a machine-wide lock and recovery journal. Linux and macOS Wails run as the user. Linux elevates the console through polkit. macOS installs a root-owned LaunchDaemon helper through an administrator prompt, then uses an authenticated Unix socket for connections. The helper accepts bounded profile data and allowlisted VPN parameters, runs its protected console copy and keeps journal/cache paths fixed. macOS keeps its protected journal and credential cache in `/var/db/vk-turn-proxy-desktop`; parent exit and helper connection closure trigger normal cleanup.
 
 ## Documentation and releases

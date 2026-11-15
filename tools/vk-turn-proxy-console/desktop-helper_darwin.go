@@ -113,7 +113,7 @@ func helperPeerUID(connection *net.UnixConn) (uint32, error) {
 }
 
 func helperRequestFromOptions(o *options) (helperRequest, error) {
-	allowed := map[string]bool{"config": true, "wg-config": true, "vk-link-file": true, "vk-cookie-file": true, "server": true, "server-transport": true, "peer": true, "block-ipv6": true, "stop-file": true, "parent-pid": true}
+	allowed := map[string]bool{"config": true, "wg-config": true, "vk-link-file": true, "vk-cookie-file": true, "server": true, "server-transport": true, "peer": true, "block-ipv6": true, "stop-file": true, "parent-pid": true, "desktop-traffic": true}
 	for name := range o.set {
 		if !allowed[name] {
 			return helperRequest{}, fmt.Errorf("-%s is unavailable through the desktop helper", name)
@@ -147,6 +147,9 @@ func helperRequestFromOptions(o *options) (helperRequest, error) {
 		}
 	}
 	request.Args = append(request.Args, "-block-ipv6="+strconv.FormatBool(o.blockIPv6))
+	if o.desktopTraffic {
+		request.Args = append(request.Args, "-desktop-traffic=true")
+	}
 	return request, nil
 }
 
@@ -159,7 +162,7 @@ func validateHelperRequest(request helperRequest) error {
 	}
 	for i := 0; i < len(request.Args); i++ {
 		switch request.Args[i] {
-		case "-block-ipv6=true", "-block-ipv6=false":
+		case "-block-ipv6=true", "-block-ipv6=false", "-desktop-traffic=true":
 		case "-server", "-server-transport", "-peer":
 			i++
 			if i >= len(request.Args) || len(request.Args[i]) > 4096 {

@@ -296,8 +296,8 @@ type Proxy struct {
 	// the retry floor asks about (retryfloor.go).
 	ups sessionUps
 
-	// dealloc counts what became of the confirmed deallocates over a UDP relay
-	// leg (dealloc.go).
+	// dealloc counts Allocate attempts and confirmed releases on both relay
+	// transports (dealloc.go).
 	dealloc deallocStats
 
 	// sessionHook, when set, stands in for the transport's session function —
@@ -2011,6 +2011,7 @@ func (p *Proxy) TURNServerIP() string {
 func (p *Proxy) Stop() {
 	p.cancel()
 	p.wg.Wait()
+	p.saveStoppedCache()
 }
 
 // Stopped reports whether Stop or StopWithTimeout has run: the root context
@@ -2037,7 +2038,7 @@ func (p *Proxy) StopWithTimeout(timeout time.Duration) {
 	}()
 	select {
 	case <-done:
-		// clean exit — every goroutine returned within budget
+		p.saveStoppedCache() // every session has finished its deallocate
 	case <-time.After(timeout):
 		log.Printf("proxy: StopWithTimeout — %s elapsed, %d goroutines still alive (returning anyway, runtime exit will reap them)",
 			timeout.Round(time.Millisecond), runtime.NumGoroutine())
@@ -3521,6 +3522,7 @@ func (p *Proxy) runTURN(ctx context.Context, turnAddr string, creds *TURNCreds, 
 
 	allocStart := time.Now()
 	gave.lifeOf().fresh()
+	p.dealloc.started.Add(1)
 	relayConn, err := client.Allocate()
 	if err != nil {
 		return p.relayUnanswered(connIdx, slotIdx, creds, turnAddr, attempt, fmt.Errorf("TURN allocate: %w", err))
@@ -3542,16 +3544,13 @@ func (p *Proxy) runTURN(ctx context.Context, turnAddr string, creds *TURNCreds, 
 		p.noteSessionUp(connIdx)
 	}
 	// The allocation is given back by ONE body (returnAllocation, seatcool.go).
-	// Over a UDP relay leg first the deallocate the relay CONFIRMS: this function
+	// On both relay transports first the deallocate the relay CONFIRMS: this function
 	// returns after the relay's answer, not ahead of a datagram (dealloc.go) — and
 	// so does the session above, which JOINS this goroutine before it returns and
 	// gives its credential back (relayjoin.go), and only then its restart. Then
 	// the relay conn's own Close; and the moment is NOTED for the pool, which
 	// keeps counting the seat for the relay's second.
-	var release func() deallocVerdict
-	if p.config.UseUDP {
-		release = func() deallocVerdict { return p.releaseAllocation(client, creds, connIdx) }
-	}
+	release := func() deallocVerdict { return p.releaseAllocation(client, creds, connIdx) }
 	defer func() { _ = returnAllocation(relayConn, release, gave) }()
 	// Registered AFTER it, so LIFO runs it FIRST: what returnAllocation writes
 	// goes out under relayCloseWriteBudget on the control socket, instead of
@@ -5740,6 +5739,7 @@ func (p *Proxy) setupSRTPSession(ctx context.Context, turnAddr string, creds *TU
 
 	allocStart := time.Now()
 	gave.lifeOf().fresh()
+	p.dealloc.started.Add(1)
 	relayConn, err := tc.Allocate()
 	if err != nil {
 		tc.Close()
@@ -5797,17 +5797,13 @@ func (p *Proxy) setupSRTPSession(ctx context.Context, turnAddr string, creds *TU
 		})
 	}
 	defer quiesce()
-	// Over a UDP relay leg the allocation is given back by a deallocate the
-	// relay CONFIRMS, before the relay conn is closed — here and in the live
-	// session's Close alike (dealloc.go). Nil over TCP.
-	var release func() deallocVerdict
-	if p.config.UseUDP {
-		release = func() deallocVerdict { return p.releaseAllocation(tc, creds, connIdx) }
-	}
+	// Confirm the deallocate on both relay transports before closing the
+	// allocation, so a clean shutdown can persist the released quota.
+	release := func() deallocVerdict { return p.releaseAllocation(tc, creds, connIdx) }
 	abortSetup := func() {
 		quiesce()
 		_ = ctlConn.SetWriteDeadline(time.Now().Add(relayCloseWriteBudget)) // the deallocate goes out under a budget, hook or no hook
-		_ = returnAllocation(relayConn, release, gave)                      // confirmed over UDP, and NOTED for the pool — seatcool.go
+		_ = returnAllocation(relayConn, release, gave)                      // confirmed and NOTED for the pool — seatcool.go
 		tc.Close()
 		gave.lifeOf().wait() // nothing of this allocation's is left asking the relay — outofreach.go
 		_ = ctlConn.Close()

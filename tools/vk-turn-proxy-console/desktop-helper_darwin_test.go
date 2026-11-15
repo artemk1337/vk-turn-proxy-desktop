@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -40,12 +41,18 @@ func TestHelperReadsInputsBeforeElevation(t *testing.T) {
 	if err := os.WriteFile(profile, []byte("private profile"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	options, err := parseFlags([]string{"-config", profile, "-parent-pid", "123", "-stop-file", "/tmp/stop", "-block-ipv6=true"})
+	options, err := parseFlags([]string{"-config", profile, "-parent-pid", "123", "-stop-file", "/tmp/stop", "-block-ipv6=true", "-desktop-traffic"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	request, err := helperRequestFromOptions(options)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(request.Args, "-desktop-traffic=true") {
+		t.Fatal("desktop traffic counters were not forwarded")
+	}
+	if err := validateHelperRequest(request); err != nil {
 		t.Fatal(err)
 	}
 	if string(request.Profile) != "private profile" {

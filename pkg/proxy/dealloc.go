@@ -1,12 +1,12 @@
 package proxy
 
-// The deallocate, CONFIRMED — over a UDP relay leg (build 428; N3).
+// The deallocate, confirmed on both relay transports.
 //
 // pion's relay conn gives its allocation back with ONE Refresh(LIFETIME 0)
 // datagram and does not wait for the answer (UDPConn.Close: dontWait) — and our
 // teardown closes the client and the socket right behind it, so nothing is
-// retransmitted and no answer is ever read. Over TCP that is enough: the stream
-// delivers the request, and the connection's own close frees the allocation.
+// retransmitted and no answer is ever read. TCP delivers the request, but a
+// reusable on-disk cache needs confirmation on either transport.
 // Over UDP it left two doors open, both seen in the field:
 //
 //   - THE RESTART OUTRAN ITS OWN DEALLOCATE. A killed session returns at once
@@ -34,15 +34,16 @@ package proxy
 //
 // Bounded: on a dead path nothing answers and a stop must not hang — after
 // deallocConfirmBudget the pending transaction is closed and the teardown goes
-// on as it always did; what that leaves behind is said in the log. 🚫 Never
-// over TCP: nothing is gained there, and a stuck write is what the teardown's
-// write budget exists for.
+// on as it always did; what that leaves behind is said in the log. TCP uses
+// half the write budget, leaving room for the rest of the bounded teardown.
 
 import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/pion/stun/v3"
@@ -57,10 +58,11 @@ var deallocConfirmBudget = 500 * time.Millisecond
 type deallocVerdict int
 
 const (
-	deallocConfirmed  deallocVerdict = iota // the relay answered: the allocation is released
-	deallocGone                             // 437: the relay holds no allocation for this socket — released already, or the mapping has changed and it cannot be reached from here
-	deallocRefused                          // another error answer
-	deallocUnanswered                       // nothing came back within the budget, or the request could not be written
+	deallocConfirmed    deallocVerdict = iota // the relay answered: the allocation is released
+	deallocGone                               // 437: the relay holds no allocation for this socket — released already, or the mapping has changed and it cannot be reached from here
+	deallocRefused                            // another error answer
+	deallocUnanswered                         // nothing came back within the budget, or the request could not be written
+	deallocDisconnected                       // a TCP connection is closed/reset, so its allocation is gone
 )
 
 // stunRoundTrip performs ONE STUN transaction with the relay and returns its
@@ -97,6 +99,11 @@ func confirmDeallocate(do stunRoundTrip, username, password string) (deallocVerd
 			return deallocUnanswered, 0, errors.New("no answer")
 		}
 		if res.Type.Class != stun.ClassErrorResponse {
+			lifetime, lifeErr := res.Get(stun.AttrLifetime)
+			if res.Type != stun.NewType(stun.MethodRefresh, stun.ClassSuccessResponse) ||
+				lifeErr != nil || len(lifetime) != 4 || lifetime[0]|lifetime[1]|lifetime[2]|lifetime[3] != 0 {
+				return deallocRefused, 0, errors.New("release response did not confirm a zero lifetime")
+			}
 			return deallocConfirmed, 0, nil
 		}
 		var ec stun.ErrorCodeAttribute
@@ -148,13 +155,14 @@ func boundedDeallocate(do stunRoundTrip, abort func(), username, password string
 // observation a field control needs: a teardown that confirms leaves no other
 // trace.
 type deallocStats struct {
+	started                atomic.Int64 // Allocate attempts, including unanswered ones
 	confirmed, unconfirmed atomic.Int64
 	lastSummaryAt          atomic.Int64 // unix nanoseconds
 	legsLeft               atomic.Int64 // sessions that returned without their relay leg — relayjoin.go
 }
 
-// releaseAllocation is the confirmed deallocate of a session over a UDP relay
-// leg — ONE body for every teardown that gives an allocation back (the SRTP
+// releaseAllocation is the confirmed deallocate of a session on either relay
+// transport — ONE body for every teardown that gives an allocation back (the SRTP
 // session's Close, its setup's abort, runTURN's defers). Called BEFORE the
 // relay conn is closed, with a live write budget already on the socket.
 func (p *Proxy) releaseAllocation(tc *turn.Client, creds *TURNCreds, connIdx int) deallocVerdict {
@@ -166,8 +174,15 @@ func (p *Proxy) releaseAllocation(tc *turn.Client, creds *TURNCreds, connIdx int
 		}
 		return res.Msg, nil
 	}
-	v, code, err := boundedDeallocate(do, tc.Close, creds.Username, creds.Password, deallocConfirmBudget)
+	budget := deallocConfirmBudget
+	if !p.config.UseUDP && budget > relayCloseWriteBudget/2 {
+		budget = relayCloseWriteBudget / 2
+	}
+	v, code, err := boundedDeallocate(do, tc.Close, creds.Username, creds.Password, budget)
 	p.noteDeallocate(connIdx, v, code, err, time.Since(start))
+	if !p.config.UseUDP && (errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET)) {
+		return deallocDisconnected
+	}
 	return v // what the relay said — returnAllocation reads it for the pool (seatcool.go)
 }
 

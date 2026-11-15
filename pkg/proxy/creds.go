@@ -11,7 +11,6 @@ import (
 	mathrand "math/rand"
 	neturl "net/url"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -1111,10 +1110,13 @@ const cascadePauseDuration = 30 * time.Second
 // is intentionally excluded — those are per-process and shouldn't survive
 // across launches.
 type credCacheFile struct {
-	Version int              `json:"version"`
-	SavedAt int64            `json:"saved_at"`
-	Mode    string           `json:"mode,omitempty"` // credCacheModeAnon / credCacheModeCookie; absent in files from before it
-	Creds   []credCacheEntry `json:"creds"`
+	// ReleasedAt records a joined shutdown with every Allocate attempt released
+	// by a confirmed Refresh(0). Unix nanoseconds, absent in older caches.
+	ReleasedAt int64            `json:"released_at,omitempty"`
+	Version    int              `json:"version"`
+	SavedAt    int64            `json:"saved_at"`
+	Mode       string           `json:"mode,omitempty"` // credCacheModeAnon / credCacheModeCookie; absent in files from before it
+	Creds      []credCacheEntry `json:"creds"`
 	// RelayUsedAt (cookie mode, since 2026-10-20): relay → the last moment a
 	// lease on it ended (Unix seconds) — the relay's quota clock, which is the
 	// RELAY's under one okcdn user id, not any slot's. Absent in older files.
@@ -1196,7 +1198,16 @@ type credPool struct {
 	// the override list's re-resolution (credpool_relay.go reresolveOverride)
 	overrideResolving  bool
 	overrideResolvedAt time.Time
-	saverDone     chan struct{} // closed when runPeriodicSave has written its last file (tests wait for it)
+
+	inheritedUntil time.Time     // inherited allocations must expire before a clean snapshot
+	cacheRestarted bool          // a consumed release proof requires dirty snapshots until shutdown
+	saverDone      chan struct{} // closed after the periodic saver's final snapshot
+
+	// cacheReleasedAt is latched after the native sessions join. Late fetch
+	// saves preserve it because fetching credentials creates no allocations.
+	// Protected by saveMu.
+	cacheReleasedAt time.Time
+	pendingRelease  bool // a previous proof must be invalidated before acquiring
 
 	// holders is the pool's record of the leases still out — get() has handed
 	// them out, release() has not yet taken them back — by WHAT each was taken
@@ -1724,7 +1735,15 @@ func newCredPool(ctx context.Context, size int, cooldown time.Duration, cachePat
 		relayUsedAt:     map[string]time.Time{},
 	}
 	if cachePath != "" {
-		cp.loadFromDisk()
+		readyAt := cp.loadFromDisk()
+		if delay := time.Until(readyAt); delay > 0 {
+			timer := time.NewTimer(delay)
+			select {
+			case <-timer.C:
+			case <-ctx.Done():
+			}
+			timer.Stop()
+		}
 		// Periodic-save goroutine keeps lastUsedAt fresh on disk so a
 		// kill-mid-session leaves the file reflecting current activity.
 		// See credPeriodicSaveInterval comment.
@@ -1773,23 +1792,24 @@ func (cp *credPool) runPeriodicSave(ctx context.Context) {
 //
 // Called once from newCredPool before the proxy starts handing out conns,
 // so no other goroutine is touching cp.pool yet — but we still take cp.mu
-// for clarity and to satisfy isFreshLocked's lock-held precondition.
-func (cp *credPool) loadFromDisk() {
+// for clarity and to satisfy isFreshLocked's lock-held precondition. Returns
+// the end of a confirmed release's short delay for the constructor to await.
+func (cp *credPool) loadFromDisk() time.Time {
 	data, err := os.ReadFile(cp.cachePath)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			log.Printf("credpool: load: read %s: %v", cp.cachePath, err)
 		}
-		return
+		return time.Time{}
 	}
 	var f credCacheFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		log.Printf("credpool: load: corrupt JSON in %s: %v — ignoring file", cp.cachePath, err)
-		return
+		return time.Time{}
 	}
 	if f.Version != credCacheVersion {
 		log.Printf("credpool: load: version %d != expected %d — ignoring file", f.Version, credCacheVersion)
-		return
+		return time.Time{}
 	}
 	fileMode := f.Mode
 	if fileMode == "" {
@@ -1797,8 +1817,14 @@ func (cp *credPool) loadFromDisk() {
 	}
 	if fileMode != cp.mode {
 		log.Printf("credpool: load: the cache holds %s identities and this pool mints %s — ignoring file (it is rewritten at the next save)", fileMode, cp.mode)
-		return
+		return time.Time{}
 	}
+
+	released := cp.consumeReleasedCache(f)
+	if !released {
+		cp.inheritedUntil = inheritedCacheExpiry(f)
+	}
+	readyAt := time.Unix(0, f.ReleasedAt).Add(seatCoolFor)
 
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
@@ -1885,6 +1911,9 @@ func (cp *credPool) loadFromDisk() {
 		// clock nor a mark of the old one's (the user's reviews of 450 and
 		// 459's run 6).
 		lastUsedSaid := said
+		if released {
+			lastUsed, availableAt, on = time.Time{}, readyAt, nil
+		}
 		if cp.mode == credCacheModeCookie {
 			lastUsed, availableAt, on = time.Time{}, time.Time{}, nil
 		}
@@ -1924,6 +1953,9 @@ func (cp *credPool) loadFromDisk() {
 		loaded++
 		until := cp.clockLocked(entry.Slot, cp.dialNowLocked(entry.Slot))
 		switch {
+		case released:
+			log.Printf("credpool: load: slot %d restored after confirmed release (addr=%s, expires in %s)",
+				entry.Slot, entry.Address, time.Until(exp).Round(time.Second))
 		case lastUsedSaid.IsZero():
 			log.Printf("credpool: load: slot %d ready (addr=%s, expires in %s, never used in last session)",
 				entry.Slot, entry.Address, time.Until(exp).Round(time.Second))
@@ -1948,7 +1980,11 @@ func (cp *credPool) loadFromDisk() {
 			if relay == "" || unix <= 0 {
 				return
 			}
-			if at := time.Unix(unix, 0); at.After(cp.relayUsedAt[relay]) {
+			at := time.Unix(unix, 0)
+			if released {
+				at = readyAt.Add(-credSaturationCooldown)
+			}
+			if at.After(cp.relayUsedAt[relay]) {
 				cp.relayUsedAt[relay] = at
 			}
 		}
@@ -1975,6 +2011,9 @@ func (cp *credPool) loadFromDisk() {
 			}
 			before := cp.pool[i].availableAt
 			cp.applyRelayQuarantineLocked(i)
+			if released {
+				continue
+			}
 			if after := cp.pool[i].availableAt; !after.Equal(before) {
 				if after.IsZero() {
 					log.Printf("credpool: load: slot %d ready after all — its relay %s was not used within the cooldown (its own history was another relay's)", i, cp.candidatesLocked(i)[0])
@@ -1987,6 +2026,10 @@ func (cp *credPool) loadFromDisk() {
 	}
 	log.Printf("credpool: loaded %d slots from disk (%d skipped); file saved at %s",
 		loaded, skipped, time.Unix(f.SavedAt, 0).Format(time.RFC3339))
+	if released {
+		return readyAt
+	}
+	return time.Time{}
 }
 
 // saveToDisk snapshots the pool's filled slots and writes them to
@@ -2000,10 +2043,16 @@ func (cp *credPool) loadFromDisk() {
 // I/O. Two concurrent fetches completing simultaneously will serialize
 // here without trampling each other's .tmp file.
 func (cp *credPool) saveToDisk() {
+	cp.saveCache(time.Time{})
+}
+
+func (cp *credPool) saveCache(releasedAt time.Time) {
 	if cp.cachePath == "" {
 		return
 	}
 
+	cp.saveMu.Lock()
+	defer cp.saveMu.Unlock()
 	now := time.Now()
 	cp.mu.Lock()
 	f := credCacheFile{
@@ -2089,36 +2138,22 @@ func (cp *credPool) saveToDisk() {
 	}
 	cp.mu.Unlock()
 
-	cp.saveMu.Lock()
-	defer cp.saveMu.Unlock()
-
-	data, err := json.MarshalIndent(f, "", "  ")
-	if err != nil {
-		log.Printf("credpool: save: marshal: %v", err)
+	if !releasedAt.IsZero() && !cp.pendingRelease && !now.Before(cp.inheritedUntil) {
+		cp.cacheReleasedAt = releasedAt
+	}
+	if !cp.cacheReleasedAt.IsZero() {
+		f.ReleasedAt = cp.cacheReleasedAt.UnixNano()
+	} else if cp.cacheRestarted || cp.pendingRelease {
+		f = dirtyCredCache(f, now)
+	}
+	if err := cp.writeCache(f); err != nil {
+		log.Printf("credpool: save: %v", err)
 		return
 	}
-
-	tmpPath := cp.cachePath + ".tmp"
-	// Best-effort cleanup: remove any tmp file left from a prior crash.
-	// Ignore errors — WriteFile below will fail loud if anything's
-	// genuinely wrong with the directory.
-	_ = os.Remove(tmpPath)
-	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
-		log.Printf("credpool: save: write %s: %v", tmpPath, err)
-		return
+	if cp.pendingRelease {
+		cp.cacheRestarted = true
+		cp.pendingRelease = false
 	}
-	if err := os.Rename(tmpPath, cp.cachePath); err != nil {
-		log.Printf("credpool: save: rename %s -> %s: %v", tmpPath, cp.cachePath, err)
-		_ = os.Remove(tmpPath)
-		return
-	}
-	// Flush the parent directory so the rename survives a crash.
-	// This is best-effort because some filesystems do not support directory sync.
-	if dir, err := os.Open(filepath.Dir(cp.cachePath)); err == nil {
-		_ = dir.Sync()
-		_ = dir.Close()
-	}
-	log.Printf("credpool: saved %d slots to disk", len(f.Creds))
 }
 
 // get returns (addr, creds, credSlot, err) for the given connIdx.
@@ -2323,6 +2358,9 @@ type poolParkError struct {
 func (e *poolParkError) Error() string { return e.msg }
 
 func (cp *credPool) handOut(connIdx int, allowCaptchaBlock bool) (string, *TURNCreds, int, uint64, error) {
+	if !cp.ensureCacheDirty() {
+		return "", nil, -1, 0, errors.New("credpool: waiting to invalidate the previous cache release confirmation on disk")
+	}
 	cp.mu.Lock()
 
 	// Path-change pause: while pauseAcquireUntil is in the future, refuse

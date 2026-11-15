@@ -28,7 +28,8 @@ type State struct {
 }
 
 type ConnectionState struct {
-	State string `json:"state"`
+	State                 string  `json:"state"`
+	TrafficBytesPerSecond float64 `json:"trafficBytesPerSecond"`
 }
 type VKState struct {
 	Status   string `json:"status"`
@@ -45,6 +46,7 @@ type App struct {
 	vk            VKState
 	generation    uint64
 	connection    string
+	traffic       trafficSample
 	session       *backendSession
 	logs          Logs
 	logBytes      int
@@ -95,8 +97,12 @@ func (a *App) snapshot() State {
 	if a.cookies == "" {
 		vk = VKState{Status: "signed_out"}
 	}
+	traffic := 0.0
+	if a.connection == "connected" {
+		traffic = a.traffic.rate(time.Now())
+	}
 	return State{Preferences: a.preferences, Defaults: defaults, Profiles: slices.Clone(a.profiles.Profiles),
-		ActiveID: a.profiles.ActiveID, Connection: ConnectionState{State: a.connection}, VK: vk, Error: a.lastError}
+		ActiveID: a.profiles.ActiveID, Connection: ConnectionState{State: a.connection, TrafficBytesPerSecond: traffic}, VK: vk, Error: a.lastError}
 }
 
 func (a *App) GetState() State {

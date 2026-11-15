@@ -152,6 +152,8 @@ func returnAllocation(relayConn io.Closer, release func() deallocVerdict, gave *
 			held = true
 		case deallocGone:
 			inReach = false
+		case deallocDisconnected:
+			held = false
 		default:
 			held, inReach = true, !gave.lifeOf().isGone()
 		}

@@ -789,8 +789,7 @@ func TestA486InsideTheRelaysSecondDoesNotBenchTheSlot(t *testing.T) {
 // holds nothing for a connection it has lost (it lets the allocation go at the
 // EOF, as the VK relay does: measured, 24 of 24) — so nothing is noted and the
 // lease goes back at once. The control: the same session on a healthy connection
-// writes its deallocate — pion's ONE, the confirmed deallocate is for UDP — and
-// notes it. (A FIN instead of an RST is not pinned: whether the deallocate can
+// confirms its deallocate and notes it. (A FIN instead of an RST is not pinned: whether the deallocate can
 // still be written depends on whether the RST that answers the teardown's EARLIER
 // write — the SRTP layer's close — is back yet. On loopback it is: 5 of 5, nothing
 // noted. Over a real round trip it would not be: noted, the seat cooled. This
@@ -833,11 +832,11 @@ func TestOverTCPASessionTheRelayDroppedNotesNoGiveBack(t *testing.T) {
 			if !c.reset {
 				waitUntil(t, "pion's deallocate to reach the relay", 2*time.Second, func() bool { return relay.seen() >= 1 })
 				time.Sleep(100 * time.Millisecond)
-				if n := relay.seen(); n != 1 {
-					t.Errorf("%d deallocates reached the TCP relay at the teardown, want pion's one", n)
+				if n := relay.seen(); n != 3 {
+					t.Errorf("%d deallocates reached the TCP relay, want challenge, confirmation and pion close", n)
 				}
-				if ok, not := p.dealloc.confirmed.Load(), p.dealloc.unconfirmed.Load(); ok != 0 || not != 0 {
-					t.Errorf("the confirmed deallocate ran over TCP (%d confirmed, %d not) — it is for a UDP relay leg only", ok, not)
+				if ok, not := p.dealloc.confirmed.Load(), p.dealloc.unconfirmed.Load(); ok != 1 || not != 0 {
+					t.Errorf("TCP releases = %d confirmed, %d not, want 1 and 0", ok, not)
 				}
 			}
 		})

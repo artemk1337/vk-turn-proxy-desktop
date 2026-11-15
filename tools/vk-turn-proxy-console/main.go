@@ -53,6 +53,7 @@ type options struct {
 	parentPID                        int
 	logFile                          string
 	desktopLogSocket                 string
+	desktopTraffic                   bool
 	gomaxprocs, keepalive            int
 	statsEvery                       time.Duration
 	tunName                          string
@@ -92,6 +93,7 @@ func parseFlags(args []string) (*options, error) {
 	fs.StringVar(&o.pidFile, "pid-file", defaultPidFile, "the pid file: the running console keeps it locked, and a second one — a run or a -cleanup — is refused")
 	fs.IntVar(&o.parentPID, "parent-pid", 0, "stop gracefully when the desktop parent process exits")
 	fs.StringVar(&o.stopFile, "stop-file", "", "stop gracefully when this file appears (desktop GUI control)")
+	fs.BoolVar(&o.desktopTraffic, "desktop-traffic", false, "stream private desktop traffic counters once per second")
 	fs.StringVar(&o.desktopLogSocket, "desktop-log-socket", "", "private macOS desktop log socket")
 	fs.StringVar(&o.logFile, "log", "", "write the log to this file as well as to stderr (appended; created 0600 and handed to the sudo user)")
 	fs.StringVar(&o.cookieFile, "vk-cookie-file", "", "a VK login as Netscape cookies.txt or Cookie header")
@@ -864,6 +866,12 @@ func (c *console) serve(ctx context.Context) int {
 		defer t.Stop()
 		stats = t.C
 	}
+	var traffic <-chan time.Time
+	if c.o.desktopTraffic {
+		t := time.NewTicker(time.Second)
+		defer t.Stop()
+		traffic = t.C
+	}
 	check := time.NewTicker(5 * time.Second)
 	defer check.Stop()
 	for {
@@ -874,6 +882,8 @@ func (c *console) serve(ctx context.Context) int {
 			return 0
 		case <-stats:
 			c.printStats()
+		case <-traffic:
+			printDesktopTraffic(c.p.GetStats())
 		case <-check.C:
 			if msg := proxy.CookieAuthFatalError(); msg != "" {
 				log.Printf("VK refused the login: %s — export the cookies anew", msg)

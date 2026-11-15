@@ -98,7 +98,7 @@ func (a *App) Connect() (State, error) {
 		args = append(args, "-vk-cookie-file", cookiePath)
 	}
 	session := &backendSession{stopFile: filepath.Join(directory, "stop"), done: make(chan struct{})}
-	args = append(args, "-stop-file", session.stopFile, "-parent-pid", strconv.Itoa(os.Getpid()), "-block-ipv6=true")
+	args = append(args, "-stop-file", session.stopFile, "-parent-pid", strconv.Itoa(os.Getpid()), "-block-ipv6=true", "-desktop-traffic")
 	args = append(args, backendArguments(a.root)...)
 	reader, writer, err := os.Pipe()
 	if err != nil {
@@ -114,6 +114,7 @@ func (a *App) Connect() (State, error) {
 	started = true
 	a.session = session
 	a.connection = "credentials"
+	a.traffic = trafficSample{}
 	a.lastError = ""
 	a.logs.Lines = []string{}
 	a.logs.Revision++
@@ -136,6 +137,7 @@ func (a *App) waitBackend(command *exec.Cmd, finish func(), reader *os.File, dir
 	a.mu.Lock()
 	a.session = nil
 	a.connection = "disconnected"
+	a.traffic = trafficSample{}
 	if err != nil {
 		a.connection = "failed"
 		a.lastError = "VPN backend stopped. Check the connection log."
@@ -154,6 +156,7 @@ func (a *App) Disconnect() (State, error) {
 		return a.snapshot(), errors.New("Could not request disconnect.")
 	}
 	a.connection = "disconnecting"
+	a.traffic = trafficSample{}
 	return a.snapshot(), nil
 }
 
@@ -208,9 +211,20 @@ func connectionRank(state string) int {
 func (a *App) appendLog(line string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if strings.HasPrefix(line, trafficPrefix) {
+		if tx, rx, ok := parseTraffic(line); ok && a.connection == "connected" {
+			a.traffic.update(tx, rx, time.Now())
+		} else if a.connection != "connected" {
+			a.traffic = trafficSample{}
+		}
+		return
+	}
 	phase := logPhase(line)
 	if connectionRank(a.connection) > 0 && connectionRank(phase) > connectionRank(a.connection) {
 		a.connection = phase
+		if phase != "connected" {
+			a.traffic = trafficSample{}
+		}
 	}
 	a.logs.Lines = append(a.logs.Lines, line)
 	a.logBytes += len(line) + 1

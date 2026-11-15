@@ -12,7 +12,7 @@ import (
 	"errors"
 	"net"
 	"os"
-	"regexp"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -423,6 +423,9 @@ func srvFree(t *testing.T, srv *turn.Server, tap *deallocTap) {
 func TestConfirmDeallocateReadsTheRelaysAnswer(t *testing.T) {
 	answer := func(req *stun.Message, class stun.MessageClass, code stun.ErrorCode, withNonce bool) *stun.Message {
 		setters := []stun.Setter{stun.NewTransactionIDSetter(req.TransactionID), stun.NewType(stun.MethodRefresh, class)}
+		if class == stun.ClassSuccessResponse {
+			setters = append(setters, stun.RawAttribute{Type: stun.AttrLifetime, Value: []byte{0, 0, 0, 0}})
+		}
 		if class == stun.ClassErrorResponse {
 			setters = append(setters, stun.ErrorCodeAttribute{Code: code})
 			if withNonce {
@@ -565,8 +568,8 @@ func TestTheDeallocatesBudgetAbortsAndJoins(t *testing.T) {
 
 // Where it is wired, and where it is not. Every teardown that gives an
 // allocation back runs the confirmed deallocate BEFORE its relay conn is closed
-// and AFTER a live write budget is on the socket — and only over UDP.
-func TestEveryTeardownConfirmsItsDeallocateOverUDPOnly(t *testing.T) {
+// and AFTER a live write budget is on the socket on both transports.
+func TestEveryTeardownConfirmsItsDeallocate(t *testing.T) {
 	b, err := os.ReadFile("proxy.go")
 	if err != nil {
 		t.Fatal(err)
@@ -575,12 +578,12 @@ func TestEveryTeardownConfirmsItsDeallocateOverUDPOnly(t *testing.T) {
 	if n := strings.Count(src, "p.releaseAllocation("); n != 2 {
 		t.Errorf("proxy.go calls p.releaseAllocation %d times, want 2: runTURN's defer and setupSRTPSession's closure", n)
 	}
-	for _, guarded := range []string{
-		`if p\.config\.UseUDP \{\s*release = func\(\) deallocVerdict \{ return p\.releaseAllocation\(client, creds, connIdx\) \}\s*\}`,
-		`if p\.config\.UseUDP \{\s*release = func\(\) deallocVerdict \{ return p\.releaseAllocation\(tc, creds, connIdx\) \}\s*\}`,
+	for _, call := range []string{
+		"release := func() deallocVerdict { return p.releaseAllocation(client, creds, connIdx) }",
+		"release := func() deallocVerdict { return p.releaseAllocation(tc, creds, connIdx) }",
 	} {
-		if !regexp.MustCompile(guarded).MatchString(src) {
-			t.Errorf("proxy.go lacks /%s/ — the confirmed deallocate is for a UDP relay leg only", guarded)
+		if !strings.Contains(src, call) {
+			t.Errorf("proxy.go lacks %q — both transports must confirm the release", call)
 		}
 	}
 	order := func(where, body string, want ...string) {
@@ -632,8 +635,8 @@ func TestEveryTeardownConfirmsItsDeallocateOverUDPOnly(t *testing.T) {
 	}
 }
 
-// …and over TCP nothing of it runs: no request of ours beside pion's own deallocate.
-func TestOverTCPTheTeardownSendsNoRequestOfItsOwn(t *testing.T) {
+// TCP also confirms the release before persisting a clean shutdown.
+func TestOverTCPTheTeardownConfirmsTheRelease(t *testing.T) {
 	tap := newPermissionMutingTap(t, loopbackTURN(t), false, false)
 	peer := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9}
 	p := &Proxy{peer: peer, connTxBytes: make([]atomic.Int64, 1), lastTxAt: make([]atomic.Int64, 1)}
@@ -655,10 +658,73 @@ func TestOverTCPTheTeardownSendsNoRequestOfItsOwn(t *testing.T) {
 	}
 	waitUntil(t, "pion's deallocate", 2*time.Second, func() bool { return tap.refreshes.Load() >= 1 })
 	time.Sleep(100 * time.Millisecond)
-	if n := tap.refreshes.Load(); n != 1 {
-		t.Errorf("%d Refresh requests reached the TCP relay at the teardown, want pion's one", n)
+	if n := tap.refreshes.Load(); n != 3 {
+		t.Errorf("%d Refresh requests reached the TCP relay, want challenge, confirmed release and pion close", n)
 	}
-	if c, u := p.dealloc.confirmed.Load(), p.dealloc.unconfirmed.Load(); c != 0 || u != 0 {
-		t.Errorf("the confirmed deallocate ran over TCP (%d confirmed, %d not)", c, u)
+	if c, u := p.dealloc.confirmed.Load(), p.dealloc.unconfirmed.Load(); c != 1 || u != 0 {
+		t.Errorf("TCP release results = %d confirmed, %d not, want 1 and 0", c, u)
+	}
+}
+
+func TestConfirmedTCPShutdownReusesTheCacheOnTheNextConnection(t *testing.T) {
+	shortSecond(t, 20*time.Millisecond, 50*time.Millisecond)
+	user := futureUser("tcp-cache")
+	relay := newLaggingRelay(t, 1, 0, func(name string) bool { return name == user }, false)
+	peer := srtpPeer(t)
+	path := filepath.Join(t.TempDir(), "credentials.json")
+	cfg := Config{UseSrtp: true, NumConns: 1, PeerAddr: peer.String(), CredCachePath: path}
+	for connection := 0; connection < 2; connection++ {
+		p := NewProxy(cfg)
+		p.peer = peer
+		t.Cleanup(p.cancel)
+		if connection == 0 {
+			p.credPool.seedSlot(0, relay.addr, &TURNCreds{Username: user, Password: "pw", Address: relay.addr, Addresses: []string{relay.addr}})
+		}
+		addr, creds, slot, err := p.credPool.get(0, false)
+		if err != nil || creds == nil || creds.Username != user {
+			p.Stop()
+			t.Fatalf("connection %d did not reuse the credential: slot %d, %v", connection, slot, err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		var gave gaveBack
+		conn, err := p.setupSRTPSession(ctx, addr, creds, 0, slot, &gave)
+		if err != nil {
+			cancel()
+			p.Stop()
+			t.Fatalf("connection %d: %v", connection, err)
+		}
+		_ = conn.Close()
+		p.sockStats.unregister(0)
+		p.releaseLease(slot, creds, addr, &gave)
+		cancel()
+		p.Stop()
+		if cached := readReleasedCache(t, path); cached.ReleasedAt == 0 {
+			t.Fatalf("connection %d did not persist the confirmed release", connection)
+		}
+	}
+}
+
+func TestDeallocateRequiresAnExplicitZeroLifetime(t *testing.T) {
+	for _, response := range []struct {
+		name string
+		kind stun.MessageType
+		life []byte
+	}{
+		{"nonzero lifetime", stun.NewType(stun.MethodRefresh, stun.ClassSuccessResponse), []byte{0, 0, 2, 88}},
+		{"missing lifetime", stun.NewType(stun.MethodRefresh, stun.ClassSuccessResponse), nil},
+		{"unexpected method", stun.BindingSuccess, []byte{0, 0, 0, 0}},
+	} {
+		t.Run(response.name, func(t *testing.T) {
+			verdict, _, _ := confirmDeallocate(func(req *stun.Message) (*stun.Message, error) {
+				setters := []stun.Setter{stun.NewTransactionIDSetter(req.TransactionID), response.kind}
+				if response.life != nil {
+					setters = append(setters, stun.RawAttribute{Type: stun.AttrLifetime, Value: response.life})
+				}
+				return stun.Build(setters...)
+			}, "u", "pw")
+			if verdict == deallocConfirmed {
+				t.Fatal("an unproven release was treated as confirmed")
+			}
+		})
 	}
 }
