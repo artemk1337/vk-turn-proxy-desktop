@@ -5,14 +5,18 @@ COPY go.mod go.sum ./
 COPY third_party ./third_party
 RUN go mod download
 COPY . .
-RUN go test -count=1 ./tools/vk-turn-proxy-console ./pkg/vk-auth ./pkg/wireguard-profile ./pkg/proxy/srtpwrap ./pkg/turnbind
-ARG VERSION=v1.1.0
+ARG RUN_TESTS=true
+RUN if [ "$RUN_TESTS" = true ]; then go test -count=1 ./tools/vk-turn-proxy-console ./pkg/vk-auth ./pkg/wireguard-profile ./pkg/proxy/srtpwrap ./pkg/turnbind; fi
+ARG VERSION=v1.2.0
 RUN set -eu; for arch in amd64 arm64; do \
       mkdir -p "/tmp/bin/$arch"; \
       GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
         -o "/tmp/bin/$arch/vk-turn-proxy-console" ./tools/vk-turn-proxy-console; \
     done
 RUN sh installer/linux/package.sh "$VERSION" /tmp/bin /out
+
+FROM scratch AS packages
+COPY --from=build /out/ /
 
 FROM debian:bookworm-slim AS verify
 RUN apt-get update && apt-get install -y --no-install-recommends \

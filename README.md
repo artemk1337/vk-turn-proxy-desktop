@@ -20,24 +20,21 @@ Approve the administrator prompt to manage the VPN tunnel.
 Install the `.deb` on Debian or Ubuntu and open **VK TURN Proxy** from the applications menu
 
 ```sh
-sudo apt install ./vk-turn-proxy-linux-v1.1.0-amd64.deb
+sudo apt install ./vk-turn-proxy-linux-v1.2.0-amd64.deb
 ```
 
 For portable use, extract the `.tar.gz` and run `./vk-turn-proxy-desktop`. It requires Python 3, GTK 3, PyGObject, iproute2 and polkit. The app requests administrator access when connecting.
 
 ## Connect
 
-**Windows:** click **Add** in **Connection**, choose a profile link/JSON or a WireGuard config with a VK call invitation, then save. Switch saved profiles from the list and click **Connect**.
-
-**Linux:** paste a `vkturnproxy://import?data=…` link in **Profile link**, or load a `.conf` in **WireGuard config** and enter a VK call invitation. Plain JSON and Base64 are also accepted.
-
+In **Connection**, click **Add profile** (Windows **Add**), choose a profile link/JSON or a WireGuard config with a VK call invitation, then save. Switch saved profiles from the list and click **Connect**. Plain JSON and Base64 are also accepted. Both clients support adding, editing and removing named profiles.
 For manual setup, use the TURN address (usually `host:56000`) or leave it empty to use `Endpoint`. Select SRTP or DTLS to match your server.
 
 Manual configs require one peer, IPv4 and `AllowedIPs = 0.0.0.0/0`. SRTP requires the server’s `-srtp` option.
 
-In Windows, **Sign in to VK** is on the main screen and applies to all profiles. The session is checked every five minutes. **Cookies…** accepts a Netscape file or `remixsid=…; p=…`. In Linux, these actions are in **Advanced**. Website login requires [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) on Windows or WebKitGTK (`gir1.2-webkit2-4.1`) on Linux.
+**Sign in to VK** is on the main screen and applies to all profiles. The session is saved separately and checked every five minutes. **Cookies** accepts a Netscape file or `remixsid=…; p=…`. Website login requires [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) on Windows or WebKitGTK (`gir1.2-webkit2-4.1`) on Linux.
 
-**Settings** contains language, autostart and the Windows log limit (1000 lines by default). The moon/sun button switches the Windows theme. Closing the window hides it in the tray when available. **Exit** disconnects and closes the app.
+**Settings** contains language, theme, autostart and the log limit on both platforms. The log retains 1000 lines by default, adjustable from 100 to 10,000, with a separate 4 MiB cap. Closing the window hides it in the tray when available. **Exit** disconnects and closes the app.
 
 ## Terminal
 
@@ -58,8 +55,8 @@ For the portable package, use `sudo ./vk-turn-proxy-console -wizard`. Follow the
 ## Build
 
 ```sh
-docker build --build-arg VERSION=v1.1.0 --output dist/windows -f Dockerfile.windows .
-docker build --build-arg VERSION=v1.1.0 --output dist/linux -f Dockerfile.linux .
+docker build --build-arg VERSION=v1.2.0 --output dist/windows -f Dockerfile.windows .
+docker build --build-arg VERSION=v1.2.0 --output dist/linux -f Dockerfile.linux .
 ```
 
 Produces Windows ZIPs/installers and Linux archives/DEB packages for x64 and ARM64, with checksums.

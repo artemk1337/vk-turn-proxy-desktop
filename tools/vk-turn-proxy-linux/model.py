@@ -7,9 +7,14 @@ import os
 from pathlib import Path
 import threading
 import time
+import tempfile
+
+from desktop_settings import (DEFAULT_LOG_LINES, DEFAULT_THEME, LOG_MAX_BYTES,
+                              MAX_LOG_LINES, MIN_LOG_LINES, LANGUAGES, THEMES, system_language)
 
 MAX_INPUT = 4 << 20
-MAX_LOG = 128 << 10
+MAX_LOG_BYTES = LOG_MAX_BYTES
+MAX_LOG = MAX_LOG_BYTES
 PHASE_ORDER = {"": 0, "credentials": 1, "relay": 2, "handshake": 3, "connected": 4}
 
 
@@ -64,21 +69,52 @@ def private_directory(path):
 
 def write_private(path, text):
     path = Path(path)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as output:
-        os.fchmod(output.fileno(), 0o600)
-        output.write(text)
+    if path.is_symlink():
+        raise OSError("Private storage must not be a symbolic link")
+    fd, temporary = tempfile.mkstemp(prefix=".private-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as output:
+            output.write(text)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def normalize_log_limit(value):
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        return DEFAULT_LOG_LINES
+    return min(MAX_LOG_LINES, max(MIN_LOG_LINES, value))
+
+
+def log_trim_offset(text, limit):
+    offset = 0
+    for _ in range(max(0, text.count("\n") - normalize_log_limit(limit))):
+        offset = text.index("\n", offset) + 1
+    encoded = text[offset:].encode("utf-8")
+    if len(encoded) > MAX_LOG_BYTES:
+        suffix = encoded[-MAX_LOG_BYTES:].decode("utf-8", errors="ignore")
+        end = suffix.find("\n")
+        if 0 <= end < len(suffix) - 1:
+            suffix = suffix[end + 1:]
+        elif suffix.startswith("\n"):
+            suffix = suffix[1:]
+        offset = len(text) - len(suffix)
+    return offset
 
 
 def load_preferences(path):
     try:
         value = json.loads(Path(path).read_text(encoding="utf-8"))
         if isinstance(value, dict):
-            return {"language": "ru" if value.get("language") == "ru" else "en",
-                    "theme": "dark" if value.get("theme") == "dark" else "light"}
+            return {"language": value.get("language") if value.get("language") in LANGUAGES else system_language(),
+                    "theme": value.get("theme") if value.get("theme") in THEMES else DEFAULT_THEME,
+                    "logLines": normalize_log_limit(value.get("logLines"))}
     except (OSError, ValueError):
         pass
-    return {"language": "en", "theme": "light"}
+    return {"language": system_language(), "theme": DEFAULT_THEME, "logLines": DEFAULT_LOG_LINES}
 
 
 def export_vk_cookies(cookies, now=None):

@@ -18,7 +18,11 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, Gdk, Gio, GLib
 
 from model import (MAX_INPUT, MAX_LOG, PHASE_ORDER, PendingLogs, load_preferences,
-                   private_directory, write_private)
+                   private_directory, write_private, log_trim_offset)
+from profile_panel import ProfilePanel
+from vk_session import VKSession
+from connection import profile_arguments
+from desktop_settings import MIN_LOG_LINES, MAX_LOG_LINES
 from translations import RUSSIAN
 
 STYLE = b"""window { font-family: Sans; font-size: 14px; }
@@ -69,13 +73,17 @@ class Desktop(Gtk.Application):
         self.reader_done = threading.Event()
         self.logs = PendingLogs()
         self.state = "disconnected"
-        self.input_mode = 0
         self.closing = False
         self.translating = False
         self.indicator = None
         self.exit_code = 0
         self.smoke_complete = False
         self.connect("activate", self.activate_window)
+        self.connect("shutdown", self.shutdown_session)
+
+    def shutdown_session(self, _app):
+        if hasattr(self, "vk_session"):
+            self.vk_session.close()
 
     def tr(self, text):
         return RUSSIAN.get(text, text) if self.preferences["language"] == "ru" else text
@@ -187,11 +195,15 @@ class Desktop(Gtk.Application):
         header.pack_end(self.status, False, False, 0)
         content.pack_start(header, False, False, 8)
         self.tabs = Gtk.Notebook()
-        self.pages = [self.profile_page(), self.manual_page(), self.advanced_page(),
-                      self.log_page(), self.settings_page()]
-        for page, title in zip(self.pages, ("Profile link", "WireGuard config", "Advanced", "Log", "Settings")):
+        self.profiles = ProfilePanel(self.window, self.config, self.tr, self.validate_profile)
+        self.vk_session = VKSession(self.window, self.config, self.backend_path, self.tr,
+                                    smoke_test=self.args.smoke_test)
+        connection = self.page()
+        connection.pack_start(self.profiles.widget, False, False, 0)
+        connection.pack_start(self.vk_session.widget, False, False, 12)
+        self.pages = [connection, self.log_page(), self.settings_page()]
+        for page, title in zip(self.pages, ("Connection", "Log", "Settings")):
             self.tabs.append_page(page, self.bind(Gtk.Label(), title, "set_text"))
-        self.tabs.connect("switch-page", self.mode_changed)
         content.pack_start(self.tabs, True, True, 0)
         self.phase_label = Gtk.Label(xalign=0)
         self.phase_label.get_style_context().add_class("hint")
@@ -201,6 +213,7 @@ class Desktop(Gtk.Application):
         controls = Gtk.Box(spacing=10)
         self.close_hint = self.label("Closing disconnects the VPN.", "hint")
         controls.pack_start(self.close_hint, True, True, 0)
+        self.profiles.on_change = lambda: self.set_running(self.process is not None)
         self.disconnect_button = self.button("Disconnect", lambda _: self.stop())
         self.connect_button = self.button("Connect", lambda _: self.start())
         self.connect_button.get_style_context().add_class("suggested-action")
@@ -222,54 +235,6 @@ class Desktop(Gtk.Application):
         if self.args.smoke_test:
             GLib.timeout_add(250, self.smoke_begin)
 
-    def profile_page(self):
-        page = self.page()
-        page.pack_start(self.label("Connection profile", "section-title"), False, False, 0)
-        page.pack_start(self.label("Paste a connection link or JSON profile.", "hint"), False, False, 0)
-        self.profile, widget = self.editor("vkturnproxy://import?data=<base64 JSON>", 220)
-        page.pack_start(widget, True, True, 0)
-        page.pack_start(self.row(self.button("Open profile…", lambda _: self.open_file(self.profile))), False, False, 0)
-        return page
-
-    def manual_page(self):
-        page = self.page()
-        page.pack_start(self.row(self.label("WireGuard configuration", "section-title"),
-                                self.button("Open .conf…", lambda _: self.open_file(self.wireguard))), False, False, 0)
-        self.wireguard, widget = self.editor("[Interface]\nPrivateKey = …\nAddress = …\n\n[Peer]\nPublicKey = …\nEndpoint = …", 150)
-        page.pack_start(widget, True, True, 0)
-        page.pack_start(self.label("VK call link"), False, False, 0)
-        self.call_link = self.entry("https://vk.ru/call/join/…")
-        page.pack_start(self.call_link, False, False, 0)
-        grid = Gtk.Grid(column_spacing=14, row_spacing=8)
-        grid.attach(self.label("TURN server (optional)"), 0, 0, 1, 1)
-        grid.attach(self.label("Server transport"), 1, 0, 1, 1)
-        self.endpoint = self.entry("Use Endpoint from the config")
-        self.endpoint.set_hexpand(True)
-        self.transport = Gtk.ComboBoxText()
-        grid.attach(self.endpoint, 0, 1, 1, 1)
-        grid.attach(self.transport, 1, 1, 1, 1)
-        page.pack_start(grid, False, False, 0)
-        return page
-
-    def advanced_page(self):
-        page = self.page()
-        page.pack_start(self.label("Server name", "section-title"), False, False, 0)
-        page.pack_start(self.label("For JSON profiles containing several servers.", "hint"), False, False, 0)
-        self.server_name = self.entry()
-        page.pack_start(self.server_name, False, False, 0)
-        page.pack_start(self.label("VK login", "section-title"), False, False, 8)
-        self.cookie_source = Gtk.Label(xalign=0)
-        self.cookie_source.get_style_context().add_class("hint")
-        self.cookies, widget = self.editor("remixsid=…; p=…", 120)
-        page.pack_start(self.label("Paste Netscape cookies or remixsid=…; p=…", "hint"), False, False, 0)
-        page.pack_start(widget, True, True, 0)
-        page.pack_start(self.cookie_source, False, False, 0)
-        page.pack_start(self.row(self.button("Choose cookies…", lambda _: self.open_file(self.cookies, cookies=True)),
-                                self.button("Sign in to VK", self.website_login),
-                                self.button("Clear", self.clear_cookies)), False, False, 0)
-        page.pack_start(self.label("Cookies stay in this session.", "hint"), False, False, 0)
-        return page
-
     def log_page(self):
         self.log, scroll = self.editor(height=260, editable=False)
         self.log_scroll = scroll
@@ -287,6 +252,11 @@ class Desktop(Gtk.Application):
         self.theme = Gtk.ComboBoxText()
         self.theme.connect("changed", self.preference_changed)
         page.pack_start(self.theme, False, False, 0)
+        page.pack_start(self.label("Log lines", "section-title"), False, False, 8)
+        self.log_lines = Gtk.SpinButton.new_with_range(MIN_LOG_LINES, MAX_LOG_LINES, 100)
+        self.log_lines.set_value(self.preferences["logLines"])
+        self.log_lines.connect("value-changed", self.preference_changed)
+        page.pack_start(self.log_lines, False, False, 0)
         self.autostart = self.bind(Gtk.CheckButton(), "Start with Linux")
         self.autostart.connect("toggled", self.autostart_changed)
         page.pack_start(self.autostart, False, False, 8)
@@ -297,16 +267,14 @@ class Desktop(Gtk.Application):
         if self.translating:
             return
         self.preferences = {"language": self.language.get_active_id() or "en",
-                            "theme": self.theme.get_active_id() or "light"}
+                            "theme": self.theme.get_active_id() or "light",
+                            "logLines": self.log_lines.get_value_as_int()}
         try:
             write_private(self.preferences_path, json.dumps(self.preferences))
             self.apply_preferences()
+            self.append_log("", trim=True)
         except OSError as error:
             self.error(str(error))
-
-    def mode_changed(self, _tabs, _page, index):
-        if index in (0, 1):
-            self.input_mode = index
 
     def apply_preferences(self):
         self.translating = True
@@ -317,11 +285,9 @@ class Desktop(Gtk.Application):
         self.theme.append("light", self.tr("Light"))
         self.theme.append("dark", self.tr("Dark gray"))
         self.theme.set_active_id(self.preferences["theme"])
-        transport = max(0, self.transport.get_active())
-        self.transport.remove_all()
-        for text in ("Native SRTP", "Legacy DTLS"):
-            self.transport.append_text(self.tr(text))
-        self.transport.set_active(transport)
+        self.log_lines.set_value(self.preferences["logLines"])
+        self.profiles.apply_language()
+        self.vk_session.apply_language()
         self.autostart.set_active(self.autostart_path().exists())
         dark = self.preferences["theme"] == "dark"
         Gtk.Settings.get_default().set_property("gtk-application-prefer-dark-theme", dark)
@@ -396,30 +362,17 @@ class Desktop(Gtk.Application):
         else:
             self.quit()
 
-    def open_file(self, target, cookies=False):
-        dialog = Gtk.FileChooserDialog(title=self.tr("Open file"), transient_for=self.window,
-                                       action=Gtk.FileChooserAction.OPEN)
-        dialog.add_buttons(self.tr("Cancel"), Gtk.ResponseType.CANCEL, self.tr("Open"), Gtk.ResponseType.OK)
-        if dialog.run() == Gtk.ResponseType.OK:
+    def validate_profile(self, profile):
+        with tempfile.TemporaryDirectory(prefix="validate-", dir=self.config) as directory:
+            args = profile_arguments(profile, Path(directory))
             try:
-                with open(dialog.get_filename(), "rb") as source:
-                    data = source.read(MAX_INPUT + 1)
-                if len(data) > MAX_INPUT:
-                    raise ValueError(self.tr("The input is larger than 4 MiB."))
-                target.get_buffer().set_text(data.decode("utf-8-sig"))
-                if cookies:
-                    self.cookie_source.set_text(Path(dialog.get_filename()).name)
-            except (OSError, ValueError, UnicodeError) as error:
-                self.error(str(error))
-        dialog.destroy()
-
-    def clear_cookies(self, _button):
-        self.cookies.get_buffer().set_text("")
-        self.cookie_source.set_text("")
-
-    def website_login(self, _button):
-        from auth import login
-        login(self.window, self.tr, lambda text: self.cookies.get_buffer().set_text(text))
+                result = subprocess.run([str(self.backend_path()), "-validate-profile", *args],
+                                        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                        stderr=subprocess.PIPE, timeout=20)
+            except subprocess.TimeoutExpired:
+                raise ValueError(self.tr("Profile validation timed out. Try again.")) from None
+            if result.returncode:
+                raise ValueError(self.tr("Invalid connection profile. Check its fields."))
 
     def backend_path(self):
         if self.args.smoke_test and os.environ.get("VKTURN_TEST_BACKEND"):
@@ -436,30 +389,13 @@ class Desktop(Gtk.Application):
                 raise ValueError(self.tr("The terminal client is missing. Extract the complete package."))
             if os.geteuid() and not shutil.which("pkexec"):
                 raise ValueError(self.tr("Install pkexec to authorize network changes."))
-            manual = self.input_mode == 1
-            raw = self.text(self.wireguard if manual else self.profile).strip()
-            cookies = self.text(self.cookies).strip()
-            if len(raw.encode("utf-8")) > MAX_INPUT or len(cookies.encode("utf-8")) > MAX_INPUT:
-                raise ValueError(self.tr("The input is larger than 4 MiB."))
-            if manual and (not raw or not self.call_link.get_text().strip()):
-                raise ValueError(self.tr("Add a WireGuard configuration and VK call link."))
-            if not manual and not raw:
-                raise ValueError(self.tr("Paste a connection profile first."))
+            profile = self.profiles.selected()
+            if profile is None:
+                raise ValueError(self.tr("Add a connection profile first."))
+            self.vk_session.check()
             session = Path(tempfile.mkdtemp(prefix="session-", dir=self.config))
-            profile = session / "profile.txt"
-            write_private(profile, raw)
-            args = [str(backend)]
-            if manual:
-                link_path = session / "vk-link.txt"
-                write_private(link_path, self.call_link.get_text().strip())
-                args += ["-wg-config", str(profile), "-vk-link-file", str(link_path),
-                         "-server-transport", "srtp" if self.transport.get_active() == 0 else "dtls"]
-                if self.endpoint.get_text().strip():
-                    args += ["-peer", self.endpoint.get_text().strip()]
-            else:
-                args += ["-config", str(profile)]
-                if self.server_name.get_text().strip():
-                    args += ["-server", self.server_name.get_text().strip()]
+            args = [str(backend), *profile_arguments(profile, session)]
+            cookies = self.vk_session.cookies
             if cookies:
                 path = session / "cookies.txt"
                 write_private(path, cookies)
@@ -468,7 +404,7 @@ class Desktop(Gtk.Application):
             if os.geteuid():
                 args.insert(0, "pkexec")
             self.start_process(args, session)
-        except (OSError, ValueError) as error:
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
             if session:
                 shutil.rmtree(session)
             self.error(str(error))
@@ -514,9 +450,8 @@ class Desktop(Gtk.Application):
             self.error(str(error))
 
     def set_running(self, running):
-        for page in self.pages[:3]:
-            page.set_sensitive(not running)
-        self.connect_button.set_sensitive(not running)
+        self.profiles.set_running(running)
+        self.connect_button.set_sensitive(not running and self.profiles.selected() is not None)
         self.disconnect_button.set_sensitive(running)
 
     def update_state(self):
@@ -545,8 +480,8 @@ class Desktop(Gtk.Application):
             self.tray_items["Connect"].set_sensitive(self.process is None)
             self.tray_items["Disconnect"].set_sensitive(self.process is not None and self.state != "disconnecting")
 
-    def append_log(self, text):
-        if not text:
+    def append_log(self, text, trim=False):
+        if not text and not trim:
             return
         adjustment = self.log_scroll.get_vadjustment()
         follow = adjustment.get_value() + adjustment.get_page_size() >= adjustment.get_upper() - 20
@@ -556,11 +491,9 @@ class Desktop(Gtk.Application):
             _found, at = self.log.get_iter_at_location(0, self.log.get_visible_rect().y)
             anchor = buffer.create_mark(None, at, True)
         buffer.insert(buffer.get_end_iter(), text)
-        excess = buffer.get_char_count() - MAX_LOG
-        if excess > 0:
-            end = buffer.get_iter_at_offset(excess)
-            end.forward_line()
-            buffer.delete(buffer.get_start_iter(), end)
+        removed = log_trim_offset(self.text(self.log), self.preferences["logLines"])
+        if removed:
+            buffer.delete(buffer.get_start_iter(), buffer.get_iter_at_offset(removed))
 
         def restore():
             if anchor:
@@ -606,14 +539,38 @@ class Desktop(Gtk.Application):
         dialog.run()
         dialog.destroy()
 
+    def smoke_profiles(self):
+        from profile_dialog import ProfileDialog
+        from profile_store import load_profile_store
+        dialog = ProfileDialog(self.window, self.tr)
+        dialog.name.set_text("Fixture profile")
+        import base64
+        key = base64.b64encode(bytes(range(32))).decode("ascii")
+        config = "[Interface]\nPrivateKey = %s\nAddress = 10.66.0.2/32\n[Peer]\nPublicKey = %s\nEndpoint = relay.example:56000\nAllowedIPs = 0.0.0.0/0\n" % (key, key)
+        dialog.wireguard.get_buffer().set_text(config)
+        dialog.call_link.set_text("https://vk.ru/call/join/fixture")
+        dialog.mode.set_active(1)
+        profile = dialog.candidate()
+        dialog.mode.set_active(0)
+        dialog.mode.set_active(1)
+        assert self.text(dialog.wireguard) == config
+        dialog.destroy()
+        self.profiles.save(profile)
+        assert self.profiles.selected()["name"] == "Fixture profile"
+        assert load_profile_store(self.config / "profiles.json")["activeID"] == profile["id"]
+        self.log_lines.set_value(1500)
+        assert load_preferences(self.preferences_path)["logLines"] == 1500
+        self.log_lines.set_value(1000)
+
     def smoke_begin(self):
         try:
             if not self.backend_path().is_file():
                 raise AssertionError("backend binary is missing")
+            self.smoke_profiles()
             self.smoke_capture_step = 0
             self.smoke_variants = []
             for language, theme in (("en", "light"), ("ru", "dark")):
-                self.smoke_variants.extend((language, theme, page, "disconnected") for page in range(5))
+                self.smoke_variants.extend((language, theme, page, "disconnected") for page in range(3))
                 self.smoke_variants.append((language, theme, 0, "credentials"))
             GLib.timeout_add(120, self.smoke_capture)
         except Exception as error:
@@ -625,7 +582,7 @@ class Desktop(Gtk.Application):
             if self.smoke_capture_step < len(self.smoke_variants):
                 language, theme, page, state = self.smoke_variants[self.smoke_capture_step]
                 self.state = state
-                self.preferences = {"language": language, "theme": theme}
+                self.preferences.update(language=language, theme=theme)
                 self.apply_preferences()
                 self.set_running(state != "disconnected")
                 self.tabs.set_current_page(page)
@@ -640,9 +597,7 @@ class Desktop(Gtk.Application):
             self.autostart.set_active(False)
             assert not self.autostart_path().exists()
             self.tabs.set_current_page(1)
-            self.tabs.set_current_page(2)
-            assert self.input_mode == 1
-            self.tabs.set_current_page(3)
+            self.preferences["logLines"] = 2000
             self.log.get_buffer().set_text("".join("history line %04d\n" % n for n in range(1000)))
             GLib.timeout_add(150, self.smoke_history_scroll)
         except Exception as error:

@@ -2,6 +2,7 @@
 
 This repository develops the desktop GUI and console client. Windows and Linux have desktop interfaces. Shared transport code comes from anton48/vk-turn-proxy-ios and retains its license and authorship.
 
+- `pkg/desktop-settings/settings.json` defines desktop languages, themes, transport defaults, log limits and VK check interval for both clients. Update this shared contract when changing these parameters. Saved profiles and the VK account have the same controls on both platforms.
 - `pkg/proxy` and `pkg/turnbind` own the shared transport and WireGuard bind.
 - `pkg/wireguard-profile` converts supported WireGuard configs into connection profiles.
 - `tools/vk-turn-proxy-console` owns profile parsing, the setup wizard, tunnel, routes, DNS and crash recovery.

@@ -7,10 +7,27 @@ import stat
 import tempfile
 import unittest
 
-from model import PendingLogs, export_vk_cookies, load_preferences, private_directory, write_private
+from unittest.mock import patch
+
+from model import (MAX_LOG_BYTES, PendingLogs, export_vk_cookies, load_preferences,
+                   log_trim_offset, normalize_log_limit, private_directory, write_private)
 
 
 class LogTests(unittest.TestCase):
+    def test_line_limit_matches_windows_defaults_and_bounds(self):
+        for value, expected in ((None, 1000), (False, 1000), (0, 1000), (-1, 1000),
+                                (1, 100), (100, 100), (500, 500), (20000, 10000)):
+            self.assertEqual(normalize_log_limit(value), expected)
+
+    def test_log_trimming_limits_lines_and_utf8_bytes(self):
+        text = "old\n" * 1100
+        result = text[log_trim_offset(text, 1000):]
+        self.assertEqual(result, "old\n" * 1000)
+        text = "Я" * MAX_LOG_BYTES + "\n"
+        result = text[log_trim_offset(text, 1000):]
+        self.assertLessEqual(len(result.encode("utf-8")), MAX_LOG_BYTES)
+        self.assertTrue(result.endswith("\n"))
+
     def test_overload_preserves_connection_phase_and_bounds_bytes(self):
         logs = PendingLogs()
         logs.append("DEFAULT ROUTE -> the tunnel\n")
@@ -59,9 +76,17 @@ class PreferencesTests(unittest.TestCase):
             write_private(path, json.dumps({"language": "ru", "theme": "dark", "privateKey": "ignored"}))
             self.assertEqual(stat.S_IMODE(directory.stat().st_mode), 0o700)
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
-            self.assertEqual(load_preferences(path), {"language": "ru", "theme": "dark"})
+            self.assertEqual(load_preferences(path), {"language": "ru", "theme": "dark", "logLines": 1000})
             write_private(path, "[]")
-            self.assertEqual(load_preferences(path), {"language": "en", "theme": "light"})
+            with patch("model.system_language", return_value="en"):
+                self.assertEqual(load_preferences(path), {"language": "en", "theme": "light", "logLines": 1000})
+
+    def test_existing_preferences_gain_default_log_limit(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "preferences.json"
+            for value, expected in ((0, 1000), (1, 100), (20000, 10000), ("100", 1000)):
+                write_private(path, json.dumps({"logLines": value}))
+                self.assertEqual(load_preferences(path)["logLines"], expected)
 
     def test_secret_writes_refuse_symlinks(self):
         with tempfile.TemporaryDirectory() as root:

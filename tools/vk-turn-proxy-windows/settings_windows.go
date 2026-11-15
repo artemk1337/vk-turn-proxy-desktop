@@ -54,7 +54,7 @@ func (a *application) settingsTab() TabPage {
 				}},
 				Composite{MinSize: Size{Width: 220}, MaxSize: Size{Width: 240}, Layout: VBox{MarginsZero: true, Alignment: AlignHNearVNear, Spacing: 7}, Children: []Widget{
 					Label{Text: "Log limit", Font: Font{Family: "Segoe UI", PointSize: 10, Bold: true}, TextColor: headingText},
-					NumberEdit{AssignTo: &a.logLimitChoice, Value: float64(a.preferences.LogLines), MinValue: 100, MaxValue: 10000, Decimals: 0, Increment: 100, MinSize: Size{Width: 180}},
+					NumberEdit{AssignTo: &a.logLimitChoice, Value: float64(a.preferences.LogLines), MinValue: float64(minLogLines), MaxValue: float64(maxLogLines), Decimals: 0, Increment: 100, MinSize: Size{Width: 180}},
 				}},
 				HSpacer{},
 			}},

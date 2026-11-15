@@ -64,7 +64,7 @@ func (a *application) initializeVKAuth() {
 	a.updateVKStatus()
 	a.checkVKAuth()
 	go func() {
-		ticker := time.NewTicker(5 * time.Minute)
+		ticker := time.NewTicker(time.Duration(desktopDefaults.VKCheckSeconds) * time.Second)
 		defer ticker.Stop()
 		for {
 			select {

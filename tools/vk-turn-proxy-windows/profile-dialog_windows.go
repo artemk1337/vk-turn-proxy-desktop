@@ -141,7 +141,7 @@ func (a *application) openProfileEditor(profile savedProfile) (savedProfile, boo
 	}
 	mode.SetCurrentIndex(index)
 	transportIndex := 1
-	if profile.UseSRTP || profile.ID == "" {
+	if profile.UseSRTP || (profile.ID == "" && desktopDefaults.DefaultTransport == "srtp") {
 		transportIndex = 0
 	}
 	transport.SetCurrentIndex(transportIndex)

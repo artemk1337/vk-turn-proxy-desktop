@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"slices"
 )
 
 type preferences struct {
@@ -16,10 +17,10 @@ type preferences struct {
 }
 
 func defaultPreferences(language string) preferences {
-	if language != "ru" {
-		language = "en"
+	if !slices.Contains(desktopDefaults.Languages[:], language) {
+		language = desktopDefaults.DefaultLanguage
 	}
-	return preferences{Language: language, Theme: "light", LogLines: defaultLogLines}
+	return preferences{Language: language, Theme: desktopDefaults.DefaultTheme, LogLines: defaultLogLines}
 }
 
 func loadPreferences(path, language string) (preferences, error) {
@@ -34,11 +35,11 @@ func loadPreferences(path, language string) (preferences, error) {
 	if err := json.Unmarshal(data, &value); err != nil {
 		return defaultPreferences(language), err
 	}
-	if value.Language != "en" && value.Language != "ru" {
+	if !slices.Contains(desktopDefaults.Languages[:], value.Language) {
 		value.Language = defaultPreferences(language).Language
 	}
-	if value.Theme != "light" && value.Theme != "dark" {
-		value.Theme = "light"
+	if !slices.Contains(desktopDefaults.Themes[:], value.Theme) {
+		value.Theme = desktopDefaults.DefaultTheme
 	}
 	value.LogLines = normalizeLogLimit(value.LogLines)
 	return value, nil

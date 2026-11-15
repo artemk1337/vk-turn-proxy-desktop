@@ -1,0 +1,10 @@
+{
+  "languages": ["en", "ru"],
+  "themes": ["light", "dark"],
+  "defaultLanguage": "en",
+  "defaultTheme": "light",
+  "logLines": {"default": 1000, "min": 100, "max": 10000},
+  "logMaxBytes": 4194304,
+  "vkCheckSeconds": 300,
+  "defaultTransport": "srtp"
+}

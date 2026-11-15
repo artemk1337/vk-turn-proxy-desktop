@@ -5,13 +5,16 @@ package main
 import (
 	"strings"
 	"unicode/utf8"
+
+	desktopsettings "github.com/artemk1337/vk-turn-proxy-desktop/pkg/desktop-settings"
 )
 
-const (
-	logMaxBytes     = 4 << 20
-	defaultLogLines = 1000
-	minLogLines     = 100
-	maxLogLines     = 10000
+var (
+	desktopDefaults = desktopsettings.Defaults()
+	logMaxBytes     = desktopDefaults.LogMaxBytes
+	defaultLogLines = desktopDefaults.LogLines.Default
+	minLogLines     = desktopDefaults.LogLines.Min
+	maxLogLines     = desktopDefaults.LogLines.Max
 )
 
 func normalizeLogLimit(limit int) int {

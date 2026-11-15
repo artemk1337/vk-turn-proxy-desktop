@@ -23,6 +23,7 @@ for arch in amd64 arm64; do
         case "$name_only" in test_*.py|*_test.py) continue ;; esac
         install -m 644 "$file" "$portable/$name_only"
     done
+    install -m 644 pkg/desktop-settings/settings.json "$portable/desktop-settings.json"
     install -m 755 "${bin_dir}/${arch}/vk-turn-proxy-console" "$portable/vk-turn-proxy-console"
     install -m 755 installer/linux/vk-turn-proxy-desktop "$portable/vk-turn-proxy-desktop"
     install -m 644 installer/linux/vk-turn-proxy-desktop.svg "$portable/vk-turn-proxy-desktop.svg"
@@ -30,7 +31,7 @@ for arch in amd64 arm64; do
         install -m 644 "$file" "$portable/$file"
     done
 
-    install -m 644 "$portable/"*.py "$portable/vk-turn-proxy-desktop.svg" \
+    install -m 644 "$portable/"*.py "$portable/desktop-settings.json" "$portable/vk-turn-proxy-desktop.svg" \
         "$package/usr/lib/vk-turn-proxy-desktop/"
     install -m 755 "$portable/vk-turn-proxy-console" "$package/usr/lib/vk-turn-proxy-desktop/"
     install -m 755 installer/linux/vk-turn-proxy-desktop "$package/usr/bin/vk-turn-proxy-desktop"

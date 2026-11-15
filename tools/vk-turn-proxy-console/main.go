@@ -30,12 +30,14 @@ import (
 var version = "dev"
 
 type options struct {
-	configPath, serverName        string
-	wgConfigPath, serverTransport string
-	vkLinkFile                    string
-	list, cleanup, version        bool
-	wizard                        bool
-	language                      string
+	configPath, serverName            string
+	wgConfigPath, serverTransport     string
+	vkLinkFile                        string
+	list, cleanup, version            bool
+	wizard                            bool
+	validateVKCookies, checkVKSession bool
+	validateProfile                   bool
+	language                          string
 
 	peer, turnTransport, dns, vkLink, turnServer string
 	conns, poolReserve, mtu, uplinkPace          int
@@ -91,6 +93,9 @@ func parseFlags(args []string) (*options, error) {
 	fs.StringVar(&o.stopFile, "stop-file", "", "stop gracefully when this file appears (desktop GUI control)")
 	fs.StringVar(&o.logFile, "log", "", "write the log to this file as well as to stderr (appended; created 0600 and handed to the sudo user)")
 	fs.StringVar(&o.cookieFile, "vk-cookie-file", "", "a VK login as Netscape cookies.txt or Cookie header")
+	fs.BoolVar(&o.validateVKCookies, "validate-vk-cookies", false, "validate a private VK cookie file and print JSON status without connecting")
+	fs.BoolVar(&o.checkVKSession, "check-vk-session", false, "check a private VK cookie file with VK and print JSON session status")
+	fs.BoolVar(&o.validateProfile, "validate-profile", false, "validate a connection profile and print JSON status without changing the network")
 	fs.IntVar(&o.gomaxprocs, "gomaxprocs", 0, "scheduler threads (0 = every core, Go's default)")
 	fs.DurationVar(&o.statsEvery, "stats-every", 30*time.Second, "stats line interval (0 = none)")
 	fs.StringVar(&o.tunName, "tun-name", defaultTunName, "the tunnel interface (macOS: utun, numbered by the system)")
@@ -104,6 +109,9 @@ func parseFlags(args []string) (*options, error) {
 		return nil, fmt.Errorf("unexpected argument %q", fs.Arg(0))
 	}
 	fs.Visit(func(f *flag.Flag) { o.set[f.Name] = true })
+	if err := validateDesktopCommandFlags(o); err != nil {
+		return nil, err
+	}
 	if o.language != "" && o.language != "en" && o.language != "ru" {
 		return nil, errors.New("-lang must be en or ru")
 	}
@@ -211,6 +219,15 @@ func realMain(args []string) int {
 	}
 	if o.version {
 		fmt.Println("vk-turn-proxy-console", version)
+		return 0
+	}
+	if o.validateVKCookies || o.checkVKSession || o.validateProfile {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		if err := runDesktopCommand(ctx, o, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
+		}
 		return 0
 	}
 	log.SetFlags(log.Ltime | log.Lmicroseconds)
