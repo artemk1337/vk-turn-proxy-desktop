@@ -52,6 +52,7 @@ type options struct {
 	stopFile                         string
 	parentPID                        int
 	logFile                          string
+	desktopLogSocket                 string
 	gomaxprocs, keepalive            int
 	statsEvery                       time.Duration
 	tunName                          string
@@ -91,6 +92,7 @@ func parseFlags(args []string) (*options, error) {
 	fs.StringVar(&o.pidFile, "pid-file", defaultPidFile, "the pid file: the running console keeps it locked, and a second one — a run or a -cleanup — is refused")
 	fs.IntVar(&o.parentPID, "parent-pid", 0, "stop gracefully when the desktop parent process exits")
 	fs.StringVar(&o.stopFile, "stop-file", "", "stop gracefully when this file appears (desktop GUI control)")
+	fs.StringVar(&o.desktopLogSocket, "desktop-log-socket", "", "private macOS desktop log socket")
 	fs.StringVar(&o.logFile, "log", "", "write the log to this file as well as to stderr (appended; created 0600 and handed to the sudo user)")
 	fs.StringVar(&o.cookieFile, "vk-cookie-file", "", "a VK login as Netscape cookies.txt or Cookie header")
 	fs.BoolVar(&o.validateVKCookies, "validate-vk-cookies", false, "validate a private VK cookie file and print JSON status without connecting")
@@ -216,6 +218,22 @@ func realMain(args []string) int {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
+	}
+	var desktopLog *os.File
+	if o.desktopLogSocket != "" {
+		desktopLog, err = openDesktopLog(o.desktopLogSocket)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "desktop log connection could not be opened")
+			return 2
+		}
+		stdout, stderr, output := os.Stdout, os.Stderr, log.Writer()
+		os.Stdout, os.Stderr = desktopLog, desktopLog
+		log.SetOutput(desktopLog)
+		defer func() {
+			os.Stdout, os.Stderr = stdout, stderr
+			log.SetOutput(output)
+			desktopLog.Close()
+		}()
 	}
 	if o.version {
 		fmt.Println("vk-turn-proxy-console", version)
@@ -346,6 +364,9 @@ func realMain(args []string) int {
 	if err := watchParent(ctx, o.parentPID, stop); err != nil {
 		log.Print(err)
 		return 1
+	}
+	if desktopLog != nil {
+		watchDesktopLog(ctx, desktopLog, stop)
 	}
 	if o.stopFile != "" {
 		go watchStopFile(ctx, o.stopFile, stop, log.Printf)

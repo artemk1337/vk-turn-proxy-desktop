@@ -15,3 +15,9 @@ Related server implementation is maintained at [anton48/vk-turn-proxy](https://g
 ## Windows release dependencies
 
 Packages include the license notices for Wintun and the MIT/ISC WebView2 loader. Go module dependencies retain their respective licenses.
+
+## Shared desktop interface
+
+The Wails v2 desktop framework is MIT licensed. System tray support uses energye/systray under Apache-2.0 and godbus/dbus under BSD-2-Clause. Release packages include their license texts.
+
+The embedded Inter font is distributed under the SIL Open Font License 1.1. Its license is included in the application assets and release packages.

@@ -12,7 +12,7 @@ if ($arm.ExitCode -ne 1633) { throw 'ARM64 installer accepted an x64 machine' }
 try {
     $process = Start-Process $installer -ArgumentList "/S /D=$installDirectory" -Wait -PassThru
     if ($process.ExitCode -ne 0) { throw "Installer failed with $($process.ExitCode)" }
-    foreach ($file in @('vk-turn-proxy-windows.exe','vk-turn-proxy-console.exe','wintun.dll','README.md','README.ru.md','LICENSE','NOTICE.md','WINTUN-LICENSE.txt','WALK-LICENSE.txt','WEBVIEW2-LICENSE.txt')) {
+    foreach ($file in @('vk-turn-proxy-windows.exe','vk-turn-proxy-console.exe','wintun.dll','README.md','README.ru.md','LICENSE','NOTICE.md','WINTUN-LICENSE.txt','WALK-LICENSE.txt','WAILS-LICENSE.txt','DESKTOP-LICENSES.txt','FONT-LICENSE.txt','WEBVIEW2-LICENSE.txt')) {
         $installed = Join-Path $installDirectory $file
         if (-not (Test-Path $installed)) { throw "Installer omitted $file" }
         if ((Get-FileHash $installed).Hash -ne (Get-FileHash (Join-Path $portableDirectory $file)).Hash) { throw "Installer changed $file" }

@@ -37,11 +37,11 @@ public class TrayMenuAutomation {
 }
 '@
 
-function Invoke-TrayMenuExit([IntPtr]$WindowHandle, [Diagnostics.Process]$Client) {
+function Invoke-TrayMenuExit([IntPtr]$WindowHandle, [Diagnostics.Process]$Client, [uint32]$TrayMessage = 0x8000, [int]$TrayEvent = 0x7b) {
     $clientProcessId = [uint32]0
     $thread = [TrayMenuAutomation]::GetWindowThreadProcessId($WindowHandle, [ref]$clientProcessId)
     if ($clientProcessId -ne $Client.Id) { throw 'Tray owner does not belong to the client' }
-    [TrayMenuAutomation]::PostMessage($WindowHandle, 0x8000, [IntPtr]::Zero, [IntPtr]0x7b) | Out-Null
+    [TrayMenuAutomation]::PostMessage($WindowHandle, $TrayMessage, [IntPtr]::Zero, [IntPtr]$TrayEvent) | Out-Null
     $script:trayPopup = [IntPtr]::Zero
     $findPopup = [TrayMenuAutomation+EnumProc] {
         param($handle, $data)

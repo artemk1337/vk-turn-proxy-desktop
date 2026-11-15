@@ -12,11 +12,12 @@ public class WindowCapture {
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out Rect rect);
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hwnd, IntPtr dc, uint flags);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
-    [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hwnd, uint message, IntPtr wparam, IntPtr lparam);
     public delegate bool EnumProc(IntPtr hwnd, IntPtr data);
-    [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr hwnd, EnumProc callback, IntPtr data);
+    [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc callback, IntPtr data);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint process);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr hwnd, System.Text.StringBuilder name, int count);
-    [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr hwnd, uint message, IntPtr wparam, IntPtr lparam);
+    [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hwnd, uint message, IntPtr wparam, IntPtr lparam);
+
 }
 '@
 
@@ -40,6 +41,9 @@ $preferencesDirectory = Join-Path $env:LOCALAPPDATA 'VKTurnProxyWindows'
 $preferencesFile = Join-Path $preferencesDirectory 'preferences.json'
 New-Item -ItemType Directory -Force $preferencesDirectory | Out-Null
 $originalPreferences = if (Test-Path $preferencesFile) { [System.IO.File]::ReadAllBytes($preferencesFile) } else { $null }
+$smoke = Start-Process $Executable -ArgumentList '--smoke-test' -PassThru
+if (-not $smoke.WaitForExit(30000)) { $smoke.Kill(); throw 'Desktop startup self-check timed out' }
+if ($smoke.ExitCode -ne 0) { throw 'Desktop backend self-check failed' }
 try {
     foreach ($variant in @(@{ language='en'; theme='light'; autoStart=$false }, @{ language='ru'; theme='dark'; autoStart=$false })) {
         $variantName = "$($variant.language)-$($variant.theme)"
@@ -56,33 +60,29 @@ try {
             New-Item -ItemType Directory -Force screenshots | Out-Null
             Start-Sleep -Milliseconds 500
             Save-WindowImage $client.MainWindowHandle "$PWD/screenshots/$variantName-profile.png"
-            $script:tabHandle = [IntPtr]::Zero
-            $callback = [WindowCapture+EnumProc] {
+            $windowHandle = $client.MainWindowHandle
+            $script:trayHandle = [IntPtr]::Zero
+            $findTray = [WindowCapture+EnumProc] {
                 param($handle, $data)
-                $name = New-Object System.Text.StringBuilder 256
+                $owner = [uint32]0
+                [WindowCapture]::GetWindowThreadProcessId($handle, [ref]$owner) | Out-Null
+                $name = New-Object System.Text.StringBuilder 64
                 [WindowCapture]::GetClassName($handle, $name, $name.Capacity) | Out-Null
-                if ($name.ToString() -eq 'SysTabControl32') { $script:tabHandle = $handle }
+                if ($owner -eq $client.Id -and $name.ToString() -eq 'SystrayClass') { $script:trayHandle = $handle; return $false }
                 return $true
             }
-            [WindowCapture]::EnumChildWindows($client.MainWindowHandle, $callback, [IntPtr]::Zero) | Out-Null
-            if ($script:tabHandle -eq [IntPtr]::Zero) { throw 'Setup tabs were not found' }
-            $count = [WindowCapture]::SendMessage($script:tabHandle, 0x1304, [IntPtr]::Zero, [IntPtr]::Zero).ToInt32()
-            if ($count -ne 3) { throw 'Expected Connection, Log and Settings tabs' }
-            for ($i = 0; $i -lt $count; $i++) {
-                [WindowCapture]::SendMessage($script:tabHandle, 0x1330, [IntPtr]$i, [IntPtr]::Zero) | Out-Null
-                Start-Sleep -Milliseconds 250
-                Save-WindowImage $client.MainWindowHandle "$PWD/screenshots/$variantName-tab-$i.png"
-            }
-            $windowHandle = $client.MainWindowHandle
+            [WindowCapture]::EnumWindows($findTray, [IntPtr]::Zero) | Out-Null
+            if ($script:trayHandle -eq [IntPtr]::Zero) { throw 'System tray window was not created' }
             if (-not $client.CloseMainWindow()) { throw 'Desktop window did not accept close' }
-            Start-Sleep -Milliseconds 300
+            Start-Sleep -Milliseconds 500
             $client.Refresh()
             if ($client.HasExited -or [WindowCapture]::IsWindowVisible($windowHandle)) { throw 'Closing the window did not hide it in the tray' }
-            [WindowCapture]::PostMessage($windowHandle, 0x8000, [IntPtr]::Zero, [IntPtr]0x202) | Out-Null
+            [WindowCapture]::PostMessage($script:trayHandle, 0x401, [IntPtr]::Zero, [IntPtr]0x202) | Out-Null
             $restoreDeadline = (Get-Date).AddSeconds(10)
             do { Start-Sleep -Milliseconds 100 } until ([WindowCapture]::IsWindowVisible($windowHandle) -or (Get-Date) -gt $restoreDeadline)
             if (-not [WindowCapture]::IsWindowVisible($windowHandle)) { throw 'Tray click did not restore the window' }
-            Invoke-TrayMenuExit $windowHandle $client
+            Invoke-TrayMenuExit $script:trayHandle $client -TrayMessage 0x401 -TrayEvent 0x205
+            if ($client.ExitCode -ne 0) { throw "Desktop client exited with $($client.ExitCode)" }
         } finally {
             if (-not $client.HasExited) { $client.Kill() }
         }

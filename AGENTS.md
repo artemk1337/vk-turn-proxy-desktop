@@ -1,16 +1,18 @@
 # Architecture
 
-This repository develops the desktop GUI and console client. Windows and Linux have desktop interfaces. Shared transport code comes from anton48/vk-turn-proxy-ios and retains its license and authorship.
+This repository develops the desktop GUI and console client for Windows, Linux and macOS. Shared transport code comes from anton48/vk-turn-proxy-ios and retains its license and authorship.
 
 - `pkg/desktop-settings/settings.json` defines desktop languages, themes, transport defaults, log limits and VK check interval for both clients. Update this shared contract when changing these parameters. Saved profiles and the VK account have the same controls on both platforms.
 - `pkg/proxy` and `pkg/turnbind` own the shared transport and WireGuard bind.
 - `pkg/wireguard-profile` converts supported WireGuard configs into connection profiles.
 - `tools/vk-turn-proxy-console` owns profile parsing, the setup wizard, tunnel, routes, DNS and crash recovery.
-- `tools/vk-turn-proxy-windows` owns the desktop UI, preferences, current-user autostart and isolated VK website login through WebView2. See its local [AGENTS.md](tools/vk-turn-proxy-windows/AGENTS.md).
-- `tools/vk-turn-proxy-linux` owns the GTK desktop interface and unprivileged session control. See its local [AGENTS.md](tools/vk-turn-proxy-linux/AGENTS.md).
+- `tools/vk-turn-proxy-desktop` owns the shared Wails v2 GUI, embedded HTML/CSS/JavaScript and fonts, preferences, profiles and platform session control. See its local [AGENTS.md](tools/vk-turn-proxy-desktop/AGENTS.md).
+- `tools/vk-turn-proxy-windows` retains legacy Walk sources and isolated WebView2 authentication support. See its local [AGENTS.md](tools/vk-turn-proxy-windows/AGENTS.md).
+- `tools/vk-turn-proxy-linux` retains legacy GTK sources and optional isolated WebKitGTK authentication helpers. See its local [AGENTS.md](tools/vk-turn-proxy-linux/AGENTS.md).
 - `installer` owns platform installation and removal. `Dockerfile.windows` and `Dockerfile.linux` build release packages.
+- `installer/macos` builds native Apple SDK application bundles. See its local [AGENTS.md](installer/macos/AGENTS.md).
 
-Journal network changes before applying them. Route VK and TURN traffic through the physical gateway. Disconnect and parent exit run normal cleanup. Keep profile keys out of logs. Treat WireGuard configs as data and report unsupported directives before connecting. Each platform’s GUI and CLI share a machine-wide lock and recovery journal. Linux GTK runs as the user and elevates only the console through polkit.
+Journal network changes before applying them. Route VK and TURN traffic through the physical gateway. Disconnect and parent exit run normal cleanup. Keep profile keys out of logs. Treat WireGuard configs as data and report unsupported directives before connecting. Each platform’s GUI and CLI share a machine-wide lock and recovery journal. Linux and macOS Wails run as the user and elevate only the console through polkit or the macOS authorization prompt. macOS keeps its protected journal and credential cache in `/var/db/vk-turn-proxy-desktop`; parent exit and private log-socket closure trigger cleanup.
 
 ## Documentation and releases
 
@@ -18,12 +20,13 @@ Journal network changes before applying them. Route VK and TURN traffic through 
 - Explain supported profile formats, installer and portable setup, GUI and terminal workflows. Keep the wording direct and practical, with upstream attribution.
 - Describe imported profiles by their data format in documentation and UI. Keep upstream attribution in Related projects and NOTICE.md.
 - Release notes contain only a concise list of changes. Keep setup instructions and build details in the README.
-- Build releases locally in Docker. Publish Windows ZIPs/installers and Linux TAR/DEB packages for x64 and ARM64 with checksums.
+- Build Windows and Linux releases locally in Docker. Build macOS application ZIPs natively with the Apple SDK. Publish all platforms for x64 and ARM64 with checksums.
+- Use `assets/logo.png` as the canonical logo for frontend branding and platform application icons. Include localized main-window screenshots in both READMEs and their release packages.
 - Run console, profile, preferences and transport tests. Verify Windows startup, autostart lifecycle, installer install/uninstall, both languages and themes, and connection progress before publishing.
 
 - Keep iOS project files, unrelated server tools and upstream workflow definitions out of this desktop repository. Preserve attribution and license notices when reusing code.
 
-- Verify Linux GTK under Xvfb, backend parent-exit cleanup, manual/profile setup and DEB installation/removal. Keep authentication data out of preferences and logs on both platforms.
+- Verify Linux Wails under Xvfb, backend parent-exit cleanup, manual/profile setup and DEB installation/removal. Keep authentication data out of preferences and logs on both platforms.
 
 ## Changelog format
 

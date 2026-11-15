@@ -17,10 +17,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: Install GTK test dependencies
-        run: sudo apt-get update && sudo apt-get install -y python3-gi librsvg2-common gir1.2-gtk-3.0 gir1.2-webkit2-4.1 gir1.2-ayatanaappindicator3-0.1 xvfb xauth dbus-x11 iproute2 pkexec polkitd
+      - name: Install desktop test dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev pkg-config python3-gi librsvg2-common gir1.2-gtk-3.0 gir1.2-webkit2-4.1 gir1.2-ayatanaappindicator3-0.1 xvfb xauth dbus-x11 iproute2 pkexec polkitd
       - name: Test console and shared transport
-        run: go test -race ./tools/vk-turn-proxy-console ./tools/vk-turn-proxy-windows ./pkg/vk-auth ./pkg/wireguard-profile ./pkg/proxy/srtpwrap ./pkg/turnbind
+        run: go test -tags webkit2_41 -race ./tools/vk-turn-proxy-desktop ./tools/vk-turn-proxy-console ./tools/vk-turn-proxy-windows ./pkg/vk-auth ./pkg/wireguard-profile ./pkg/proxy/srtpwrap ./pkg/turnbind
       - name: Test Linux interface helpers
         run: /usr/bin/python3 -m unittest discover -s tools/vk-turn-proxy-linux -p '*_test.py'
       - name: Build terminal client
@@ -29,14 +29,17 @@ jobs:
         run: |
           go test -c -o build/console.test ./tools/vk-turn-proxy-console
           sudo unshare --net env VKTURN_LINUX_RUNTIME_TEST=1 ./build/console.test -test.run TestLinuxRuntime -test.v
-      - name: Inspect the GTK interface
+      - name: Build shared desktop client
+        run: go build -tags desktop,production,webkit2_41 -o build/vk-turn-proxy-desktop ./tools/vk-turn-proxy-desktop
+      - name: Inspect the Wails interface
         env:
-          VKTURN_REQUIRE_WEBKIT_TEST: "1"
           VKTURN_TEST_BACKEND: ${{ github.workspace }}/build/vk-turn-proxy-console
-        run: xvfb-run -a dbus-run-session -- /usr/bin/python3 tools/vk-turn-proxy-linux/main.py --smoke-test --capture-ui screenshots
+        run: |
+          mkdir -p screenshots
+          xvfb-run -a dbus-run-session -- build/vk-turn-proxy-desktop --smoke-test | tee screenshots/wails-smoke.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: linux-ui
-          path: screenshots/*.png
+          name: linux-desktop-smoke
+          path: screenshots/*.txt
           if-no-files-found: ignore

@@ -26,6 +26,8 @@ Unicode true
 !endif
 
 !define PRODUCT_NAME "VK TURN Proxy for Windows"
+!define MUI_ICON "${INPUT_DIR}/app.ico"
+!define MUI_UNICON "${INPUT_DIR}/app.ico"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\VKTurnProxyWindows"
 
 Name "${PRODUCT_NAME}"
@@ -111,9 +113,17 @@ Function un.onInit
   !insertmacro RequireClosed
 FunctionEnd
 
+!include "require-idle-executable.nsh"
+!insertmacro DefineRequireIdleExecutable ""
+!insertmacro DefineRequireIdleExecutable "un."
+
 Section "$(InstallFiles)" SEC_APPLICATION
   SectionIn RO
   SetShellVarContext all
+  Push "$INSTDIR\vk-turn-proxy-windows.exe"
+  Call RequireIdleExecutable
+  Push "$INSTDIR\vk-turn-proxy-console.exe"
+  Call RequireIdleExecutable
   SetOutPath "$INSTDIR"
   SetOverwrite on
   File "${INPUT_DIR}/vk-turn-proxy-windows.exe"
@@ -125,7 +135,15 @@ Section "$(InstallFiles)" SEC_APPLICATION
   File "${INPUT_DIR}/NOTICE.md"
   File "${INPUT_DIR}/WINTUN-LICENSE.txt"
   File "${INPUT_DIR}/WALK-LICENSE.txt"
+  File "${INPUT_DIR}/WAILS-LICENSE.txt"
+  File "${INPUT_DIR}/DESKTOP-LICENSES.txt"
+  File "${INPUT_DIR}/FONT-LICENSE.txt"
   File "${INPUT_DIR}/WEBVIEW2-LICENSE.txt"
+  File "${INPUT_DIR}/app.ico"
+  SetOutPath "$INSTDIR\docs\images"
+  File "${INPUT_DIR}/docs/images/main-window-en.png"
+  File "${INPUT_DIR}/docs/images/main-window-ru.png"
+  SetOutPath "$INSTDIR"
   File "remove-startup.ps1"
   WriteUninstaller "$INSTDIR\uninstall.exe"
   CreateDirectory "$SMPROGRAMS\VK TURN Proxy"
@@ -150,21 +168,6 @@ Section /o "$(DesktopShortcut)" SEC_DESKTOP
   CreateShortCut "$DESKTOP\VK TURN Proxy.lnk" "$INSTDIR\vk-turn-proxy-windows.exe"
 SectionEnd
 
-; Opening an image for write access detects a running GUI or console before
-; uninstall changes any installed files or startup settings.
-Function un.RequireIdleExecutable
-  Pop $1
-  retryImage:
-    IfFileExists "$1" 0 doneImage
-    System::Call 'kernel32::CreateFileW(w r1, i 0x40000000, i 1, p 0, i 3, i 0, p 0) p.r0'
-    ${If} $0 == -1
-      MessageBox MB_ICONEXCLAMATION|MB_RETRYCANCEL "$(CloseClient)" /SD IDCANCEL IDRETRY retryImage
-      SetErrorLevel 1618
-      Abort
-    ${EndIf}
-    System::Call 'kernel32::CloseHandle(p r0)'
-  doneImage:
-FunctionEnd
 
 Section "Uninstall"
   SetShellVarContext all
@@ -194,7 +197,15 @@ Section "Uninstall"
   Delete "$INSTDIR\NOTICE.md"
   Delete "$INSTDIR\WINTUN-LICENSE.txt"
   Delete "$INSTDIR\WALK-LICENSE.txt"
+  Delete "$INSTDIR\WAILS-LICENSE.txt"
+  Delete "$INSTDIR\DESKTOP-LICENSES.txt"
+  Delete "$INSTDIR\FONT-LICENSE.txt"
   Delete "$INSTDIR\WEBVIEW2-LICENSE.txt"
+  Delete "$INSTDIR\app.ico"
+  Delete "$INSTDIR\docs\images\main-window-en.png"
+  Delete "$INSTDIR\docs\images\main-window-ru.png"
+  RMDir "$INSTDIR\docs\images"
+  RMDir "$INSTDIR\docs"
   Delete "$INSTDIR\remove-startup.ps1"
   Delete "$INSTDIR\uninstall.exe"
   RMDir "$INSTDIR"

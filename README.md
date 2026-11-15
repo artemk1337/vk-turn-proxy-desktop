@@ -1,8 +1,10 @@
 # VK TURN Proxy Desktop
 
-Desktop VPN client that sends WireGuard traffic through VK TURN relays. Available for Windows and Linux. Supports profile links, WireGuard configs, VK login, tray controls and autostart. English and Russian interface with light and dark themes.
+Desktop VPN client that sends WireGuard traffic through VK TURN relays. Available for Windows, Linux and macOS. Supports profile links, WireGuard configs, VK login, tray controls and autostart. Shared Wails interface with English and Russian, light and dark themes, and reduced-motion support.
 
 [Русский](README.ru.md)
+
+![Main window in English](docs/images/main-window-en.png)
 
 ## Install
 
@@ -13,6 +15,8 @@ Download the package for **amd64 (x64)** or **arm64** from [Releases](https://gi
 - **Installer** — run `*-setup.exe`. The app and terminal wizard appear in the Start menu.
 - **Portable** — extract the ZIP and run `vk-turn-proxy-windows.exe`. Keep both executables and `wintun.dll` together.
 
+The desktop app requires Microsoft Edge WebView2 Runtime and offers to install it when missing. [Download Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
+
 Approve the administrator prompt to manage the VPN tunnel.
 
 ### Linux
@@ -20,21 +24,27 @@ Approve the administrator prompt to manage the VPN tunnel.
 Install the `.deb` on Debian or Ubuntu and open **VK TURN Proxy** from the applications menu
 
 ```sh
-sudo apt install ./vk-turn-proxy-linux-v1.2.1-amd64.deb
+sudo apt install ./vk-turn-proxy-linux-v1.3.0-amd64.deb
 ```
 
-For portable use, extract the `.tar.gz` and run `./vk-turn-proxy-desktop`. It requires Python 3, GTK 3, PyGObject, iproute2 and polkit. The app requests administrator access when connecting.
+For portable use, extract the `.tar.gz` and run `./vk-turn-proxy-desktop`. It requires GTK 3, WebKitGTK 4.1, iproute2 and polkit. Website login additionally uses Python 3, PyGObject and `gir1.2-webkit2-4.1`. The app requests administrator access when connecting.
+
+### macOS
+
+Download the **arm64** ZIP for Apple Silicon or **amd64** for Intel. Extract it and move **VK TURN Proxy.app** to Applications. Requires macOS 12 or later. The app requests administrator authorization when connecting and restores network settings when disconnecting or exiting.
+
+Use **Import cookies** for VK authentication on macOS. The app uses the system WKWebView. The macOS packages use ad-hoc signing. First launch can require approval in System Settings → Privacy & Security. To remove the app, turn off **Launch at sign-in** and delete the application.
 
 ## Connect
 
-In **Connection**, click **Add profile** (Windows **Add**), choose a profile link/JSON or a WireGuard config with a VK call invitation, then save. Switch saved profiles from the list and click **Connect**. Plain JSON and Base64 are also accepted. Both clients support adding, editing and removing named profiles.
+In **Connection**, click **Add profile**, choose a profile link/JSON or a WireGuard config with a VK call invitation, then save. Switch saved profiles from the list and click **Connect**. Plain JSON and Base64 are also accepted. The desktop app supports adding, editing and removing named profiles.
 For manual setup, use the TURN address (usually `host:56000`) or leave it empty to use `Endpoint`. Select SRTP or DTLS to match your server.
 
 Manual configs require one peer, IPv4 and `AllowedIPs = 0.0.0.0/0`. SRTP requires the server’s `-srtp` option.
 
 **Sign in to VK** is on the main screen and applies to all profiles. The session is saved separately and checked every five minutes. **Cookies** accepts a Netscape file or `remixsid=…; p=…`. Website login requires [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) on Windows or WebKitGTK (`gir1.2-webkit2-4.1`) on Linux.
 
-**Settings** contains language, theme, autostart and the log limit on both platforms. The log retains 1000 lines by default, adjustable from 100 to 10,000, with a separate 4 MiB cap. Closing the window hides it in the tray when available. **Exit** disconnects and closes the app.
+**Settings** contains language, theme, autostart and the log limit on all platforms. The log retains 1000 lines by default, adjustable from 100 to 10,000, with a separate 4 MiB cap. Closing the window hides it in the tray when available. **Exit** disconnects and closes the app.
 
 ## Terminal
 
@@ -50,16 +60,33 @@ On Linux, run the installed terminal client
 sudo vk-turn-proxy-console -wizard
 ```
 
-For the portable package, use `sudo ./vk-turn-proxy-console -wizard`. Follow the setup steps. Press **Ctrl+C** to disconnect. Add `-vk-cookie-file .\cookies.txt` if your profile requires VK login.
+On macOS, use the terminal client inside the application bundle
+
+```sh
+sudo "/Applications/VK TURN Proxy.app/Contents/MacOS/vk-turn-proxy-console" -wizard
+```
+
+For the Linux portable package, use `sudo ./vk-turn-proxy-console -wizard`. Follow the setup steps. Press **Ctrl+C** to disconnect. Add `-vk-cookie-file .\cookies.txt` if your profile requires VK login.
 
 ## Build
 
+The desktop applications embed the same HTML/CSS/JavaScript frontend in a Wails v2 Go executable. The frontend is bundled with the application, including its fonts, and requires no Node.js build step. Linux builds use CGO with GTK 3 and WebKitGTK 4.1. Docker builds both CPU architectures with native toolchains through buildx emulation.
+
+
 ```sh
-docker build --build-arg VERSION=v1.2.1 --output dist/windows -f Dockerfile.windows .
-docker build --build-arg VERSION=v1.2.1 --output dist/linux -f Dockerfile.linux .
+docker build --build-arg VERSION=v1.3.0 --build-arg RUN_TESTS=false --output dist/windows -f Dockerfile.windows .
+docker build --target packages --build-arg VERSION=v1.3.0 --build-arg RUN_TESTS=false --output dist/linux -f Dockerfile.linux .
 ```
 
 Produces Windows ZIPs/installers and Linux archives/DEB packages for x64 and ARM64, with checksums.
+
+Build macOS packages on a Mac with Xcode Command Line Tools and the Apple SDK
+
+```sh
+sh installer/macos/package.sh v1.3.0 dist/macos
+```
+
+Produces ad-hoc signed application ZIPs for Intel and Apple Silicon with checksums.
 
 ## Related projects
 

@@ -1,35 +1,56 @@
 # syntax=docker/dockerfile:1
-FROM golang:1.26-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0 AS build
+# Compile each GTK/WebKit GUI with its native toolchain, including under buildx emulation.
+FROM --platform=linux/amd64 golang:1.26-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0 AS build-amd64
+RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get -o Acquire::Retries=3 update && apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
+      libgtk-3-dev libwebkit2gtk-4.1-dev pkg-config ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 COPY go.mod go.sum ./
 COPY third_party ./third_party
 RUN go mod download
 COPY . .
+RUN mkdir -p /bin-out && CGO_ENABLED=1 go build -tags desktop,production,webkit2_41 -trimpath \
+      -ldflags "-s -w" -o /bin-out/vk-turn-proxy-desktop ./tools/vk-turn-proxy-desktop
+ARG VERSION=v1.3.0
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
+      -o /bin-out/vk-turn-proxy-console ./tools/vk-turn-proxy-console
+
+FROM --platform=linux/arm64 golang:1.26-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0 AS build-arm64
+RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get -o Acquire::Retries=3 update && apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
+      libgtk-3-dev libwebkit2gtk-4.1-dev pkg-config ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY go.mod go.sum ./
+COPY third_party ./third_party
+RUN go mod download
+COPY . .
+RUN mkdir -p /bin-out && CGO_ENABLED=1 go build -tags desktop,production,webkit2_41 -trimpath \
+      -ldflags "-s -w" -o /bin-out/vk-turn-proxy-desktop ./tools/vk-turn-proxy-desktop
+ARG VERSION=v1.3.0
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
+      -o /bin-out/vk-turn-proxy-console ./tools/vk-turn-proxy-console
+
+FROM build-arm64 AS package
 ARG RUN_TESTS=true
-RUN if [ "$RUN_TESTS" = true ]; then go test -count=1 ./tools/vk-turn-proxy-console ./pkg/vk-auth ./pkg/wireguard-profile ./pkg/proxy/srtpwrap ./pkg/turnbind; fi
-ARG VERSION=v1.2.1
-RUN set -eu; for arch in amd64 arm64; do \
-      mkdir -p "/tmp/bin/$arch"; \
-      GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
-        -o "/tmp/bin/$arch/vk-turn-proxy-console" ./tools/vk-turn-proxy-console; \
-    done
+RUN if [ "$RUN_TESTS" = true ]; then go test -tags webkit2_41 -count=1 ./tools/vk-turn-proxy-desktop ./tools/vk-turn-proxy-console ./pkg/vk-auth ./pkg/wireguard-profile ./pkg/proxy/srtpwrap ./pkg/turnbind; fi
+COPY --from=build-amd64 /bin-out/ /tmp/bin/amd64/
+COPY --from=build-arm64 /bin-out/ /tmp/bin/arm64/
 RUN sh installer/linux/package.sh "$VERSION" /tmp/bin /out
 
 FROM scratch AS packages
-COPY --from=build /out/ /
+COPY --from=package /out/ /
 
 FROM debian:bookworm-slim AS verify
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      python3 python3-gi gir1.2-gtk-3.0 iproute2 pkexec polkitd ca-certificates \
-      gir1.2-ayatanaappindicator3-0.1 gir1.2-webkit2-4.1 xvfb xauth dbus-x11 \
+      libgtk-3-0 libwebkit2gtk-4.1-0 python3 python3-gi gir1.2-gtk-3.0 \
+      gir1.2-webkit2-4.1 iproute2 pkexec polkitd ca-certificates xvfb xauth dbus-x11 \
     && rm -rf /var/lib/apt/lists/*
-# Minimal GTK installations need the SVG pixbuf loader for the application icon.
-RUN apt-get update && apt-get install -y --no-install-recommends librsvg2-common \
-    && rm -rf /var/lib/apt/lists/*
-COPY --from=build /out/ /packages/
+COPY --from=package /out/ /packages/
 COPY installer/linux/smoke.sh /smoke.sh
 RUN sh /smoke.sh /packages/*-"$(dpkg --print-architecture)".deb /screenshots
 
 FROM scratch
-COPY --from=build /out/ /
+COPY --from=package /out/ /
 COPY --from=verify /screenshots/ /qa/

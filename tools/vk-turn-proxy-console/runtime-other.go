@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//go:build !windows && !linux
+//go:build !windows && !linux && !darwin
 
 package main
 
@@ -17,7 +17,7 @@ func prepareConsoleStorage(*options) error { return nil }
 
 func watchParent(_ context.Context, pid int, _ context.CancelFunc) error {
 	if pid != 0 {
-		return errors.New("-parent-pid is supported on Windows and Linux")
+		return errors.New("-parent-pid is supported on Windows, Linux and macOS")
 	}
 	return nil
 }
