@@ -4,7 +4,6 @@ package proxy
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -151,41 +150,19 @@ func TestAnUnlimitedRelayTakesEveryConnection(t *testing.T) {
 	}
 }
 
-// Cookie mode: the slot on a relay without a quota has no quota clock, no
-// smart-pause, an open cap, and takes every connection first.
+// An unlimited relay keeps every live connection on the same credential.
 func TestCookieModeAnUnlimitedRelayHasNoQuotaClock(t *testing.T) {
 	cookieTestMode(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	cp := newCredPool(ctx, 4, 2*time.Minute, "", nil)
+	cp, mints, _ := relayPoolN(t, "", 4, relayA)
 	list, _ := ParseTURNServers(relayO + ":0," + TURNServersVK)
 	cp.setOverride(turnOverride{servers: list})
-	cp.mu.Lock()
-	own := &TURNCreds{Username: futureUser("own"), Password: "p", Address: relayO, Addresses: []string{relayO}}
-	cp.relayUsedAt[relayO] = time.Now()
-	cp.placeLocked(0, credPoolEntry{addr: relayO, addrs: cp.candidatesForSlot(0, own), creds: own, ts: time.Now(), relayHist: relayHist{lastUsedAt: time.Now().Add(-time.Minute)}})
-	vk := &TURNCreds{Username: futureUser("vk"), Password: "p", Address: relayA, Addresses: []string{relayA}}
-	cp.placeLocked(1, credPoolEntry{addr: relayA, addrs: cp.candidatesForSlot(1, vk), creds: vk, ts: time.Now()})
-	until, avail, cap0 := cp.relayQuarantineUntilLocked(relayO), cp.pool[0].availableAt, cp.capLocked(0)
-	cp.mu.Unlock()
-	if !until.IsZero() || !avail.IsZero() || cap0 <= connsPerSlot {
-		t.Fatalf("slot 0 on %s (no quota): quarantine until %v, availableAt %v, cap %d — want no clock, ready, an open cap", relayO, until, avail, cap0)
-	}
-	// A path change: no smart-pause for the slot without a quota.
-	cp.MarkInUseSlotsForPathChange()
-	cp.mu.Lock()
-	sat := cp.pool[0].saturatedUntil
-	cp.pauseAcquireUntil = time.Time{}
-	cp.mu.Unlock()
-	if !sat.IsZero() {
-		t.Fatalf("slot 0 smart-paused until %v — a relay without a quota holds no seats", sat)
-	}
-	// Conn 15 (own slot 1) is seated on slot 0 all the same: the relay
-	// without a quota takes everyone while it answers.
-	for conn := 0; conn < 25; conn++ {
-		if addr, _, slot := mustGet(t, cp, conn); slot != 0 || addr != relayO {
-			t.Fatalf("conn %d: %q on slot %d — want slot 0's %s", conn, addr, slot, relayO)
+	for conn := 0; conn < 20; conn++ {
+		if addr, _, slot := mustGet(t, cp, conn); addr != relayO || slot != 0 {
+			t.Fatalf("connection %d = %s slot %d", conn, addr, slot)
 		}
+	}
+	if mints.Load() != 1 || cp.pool[0].active != 20 {
+		t.Fatal("unlimited relay did not reuse one credential for all seats")
 	}
 }
 
@@ -222,41 +199,20 @@ func TestCookieModeASmartPauseMarkDoesNotFollowTheSlotToAnotherRelay(t *testing.
 	}
 }
 
-// (B) The minter's discovery is told which VK relays sit in the pool's
-// quota quarantine: another distinct relay is preferred; one in quarantine
-// is taken only when nothing else is free (the user's runs 6–7: a fresh
-// mint onto a relay used minutes ago parked for the rest of the window).
-func TestCookieModeTheMintForAVKSlotAvoidsARelayInQuarantine(t *testing.T) {
+// Cookie relay selection accounts for relays already held by other slots.
+func TestCookieModeMintSelectionUsesHeldRelays(t *testing.T) {
 	links := []string{"https://vk.ru/call/join/abcdef", "https://vk.ru/call/join/ghijkl"}
 	cookieTestMode(t, links...)
 	cookieMu.Lock()
 	cookieCache[cookieLinkID(links[0])] = &cookieCachedCred{creds: &TURNCreds{Username: futureUser("link1"), Password: "p", Address: relayA, Addresses: []string{relayA, relayB}}}
 	cookieCache[cookieLinkID(links[1])] = &cookieCachedCred{creds: &TURNCreds{Username: futureUser("link2"), Password: "p", Address: relayC, Addresses: []string{relayC, relayD}}}
 	cookieMu.Unlock()
-	ctx := context.Background()
-	if c, err := cookieCredForSlot(ctx, 0, nil, nil, []string{relayA}); err != nil || c.Address != relayB {
-		t.Fatalf("slot 0 with A in quarantine: %+v %v — want B", c, err)
+	if c, err := cookieCredForSlot(context.Background(), 0, nil, nil, []string{relayA}); err != nil || c.Address != relayB {
+		t.Fatalf("credential selection = %+v, error %v", c, err)
 	}
 	cookieNoteSlotRelay(0, "")
-	if c, err := cookieCredForSlot(ctx, 0, nil, nil, []string{relayA, relayB, relayC, relayD}); err != nil || c.Address != relayA {
-		t.Fatalf("slot 0 with every relay in quarantine: %+v %v — want A all the same (nothing else is free)", c, err)
-	}
-	// The pool names its quarantined relays, and both fetch closures pass them.
-	cookieTestMode(t)
-	ctx2, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	cp := newCredPool(ctx2, 4, 2*time.Minute, "", nil)
-	cp.mu.Lock()
-	cp.relayUsedAt[relayA] = time.Now()
-	cp.relayUsedAt[relayB] = time.Now().Add(-2 * credSaturationCooldown)
-	cp.mu.Unlock()
-	if q := cp.quarantinedRelays(); strings.Join(q, ",") != relayA {
-		t.Fatalf("quarantined relays: %v, want [%s] (B's window is over)", q, relayA)
-	}
-	for _, f := range []string{"credpool.go", "proxy.go"} {
-		if !strings.Contains(goFile(t, f), ".heldRelaysExcept(slot), ") || !strings.Contains(goFile(t, f), ".quarantinedRelays())") {
-			t.Fatalf("%s: the pool's cookie fetch does not tell cookieCredForSlot the quarantined relays", f)
-		}
+	if c, err := cookieCredForSlot(context.Background(), 0, nil, nil, []string{relayA, relayB, relayC, relayD}); err != nil || c.Address != relayA {
+		t.Fatalf("credential selection with all relays held = %+v, error %v", c, err)
 	}
 }
 
@@ -267,63 +223,19 @@ func TestCookieModeTheMintForAVKSlotAvoidsARelayInQuarantine(t *testing.T) {
 // read the entry's clock whatever relay the slot dials; the clock is VK's seats
 // on the credential, and a relay without a quota holds none of them.
 
-// The stand's shape: a pool of four, every slot pending by VK's clock, the list
-// O:0,$vkurls — twenty connections on slot 0's O at once, no mint, no park, and
-// the override says why. The clock is KEPT: once O is marked the slot dials
-// VK's relays, whose seats the credential may still hold — not fresh, VK's cap,
-// nobody seated on it at VK inside the clock.
-func TestAnonModeASlotPendingByVKsClockIsReadyOnARelayWithoutAQuota(t *testing.T) {
-	used := time.Now().Add(-2 * time.Minute).Unix()
-	var entries []credCacheEntry
-	for slot := 0; slot < 4; slot++ {
-		entries = append(entries, credCacheEntry{Slot: slot, Address: relayA, Addresses: []string{relayA, relayB},
-			Username: futureUser(fmt.Sprintf("used-%d", slot)), Password: "p", LastUsedAt: used})
-	}
-	path := writeCache(t, t.TempDir(), entries...)
+// Cached usage history does not delay fallback after a relay fails.
+func TestAnonModeCachedUsageDoesNotDelayRelayFallback(t *testing.T) {
+	path := writeCache(t, t.TempDir(), credCacheEntry{Slot: 0, Address: relayA, Addresses: []string{relayA, relayB},
+		Username: futureUser("recent-use"), Password: "p", LastUsedAt: time.Now().Unix()})
 	cp, mints, _ := relayPoolN(t, path, 4, relayC)
-	logged := captureLog(t)
-	list, err := ParseTURNServers(relayO + ":0," + TURNServersVK)
-	if err != nil {
-		t.Fatal(err)
-	}
+	list, _ := ParseTURNServers(relayO + ":0," + TURNServersVK)
 	cp.setOverride(turnOverride{servers: list})
-	var held []*TURNCreds
-	for conn := 0; conn < 20; conn++ {
-		addr, creds, slot := mustGet(t, cp, conn)
-		if addr != relayO || slot != 0 {
-			t.Fatalf("conn %d: %q on slot %d — want every connection on slot 0's %s (no quota) although the slot is pending by VK's clock", conn, addr, slot, relayO)
-		}
-		held = append(held, creds)
-	}
-	if mints.Load() != 0 || cp.pool[0].active != 20 {
-		t.Fatalf("mints %d, slot 0 active %d — want no mint, twenty seats on the one credential", mints.Load(), cp.pool[0].active)
-	}
-	cp.mu.Lock()
-	avail, pending := cp.pool[0].availableAt, cp.pendingLocked(0)
-	fresh0, avail0 := cp.isFreshLocked(0), cp.availableLocked(0) // the counts, the grower, the UI: the same answer as the hand-out
-	cp.mu.Unlock()
-	if !fresh0 || !avail0 {
-		t.Fatalf("slot 0 dialling %s (no quota): fresh %v, available %v — want both, as the hand-out found it", relayO, fresh0, avail0)
-	}
-	if avail.IsZero() || !time.Now().Before(avail) {
-		t.Fatalf("slot 0's VK clock erased: availableAt %v — want kept for the fallback to VK's relays", avail)
-	}
-	if pending {
-		t.Fatalf("slot 0 is pending to the mint paths while it dials %s (no quota) — it is ready there", relayO)
-	}
-	if !strings.Contains(logged(), "pending by VK's clock") {
-		t.Fatalf("the override does not say the pending slots are ready on %s:\n%s", relayO, logged())
-	}
+	_, creds, slot := mustGet(t, cp, 0)
+	cp.release(slot, creds, relayO)
 	cp.health.answered("", time.Time{})
-	cp.noteRelayUnanswered(0, 0, held[0], relayO, time.Now())
-	cp.mu.Lock()
-	fresh, pending, cap0, after := cp.isFreshLocked(0), cp.pendingLocked(0), cp.capLocked(0), cp.pool[0].availableAt
-	cp.mu.Unlock()
-	if fresh || !pending || cap0 != connsPerSlot || !after.Equal(avail) {
-		t.Fatalf("slot 0 after O is marked: fresh %v, pending %v, cap %d, availableAt %v (was %v) — want VK's clock applied again (pending, not fresh), VK's cap, the clock untouched", fresh, pending, cap0, after, avail)
-	}
-	if _, _, slot, err := cp.get(20, false); err == nil && slot == 0 {
-		t.Fatalf("conn 20 seated on slot 0 at VK inside the credential's clock")
+	cp.noteRelayUnanswered(0, slot, creds, relayO, time.Now())
+	if addr, _, next := mustGet(t, cp, 1); addr != relayA || next != 0 || mints.Load() != 0 {
+		t.Fatalf("cached fallback = %s slot %d, mints %d", addr, next, mints.Load())
 	}
 }
 
@@ -484,8 +396,8 @@ func TestAnonModeTheSeatsStayWithTheRelayTheyWereCreatedOnAcrossAPathChange(t *t
 	cp.pauseAcquireUntil = time.Time{}
 	onC, onO := cp.markLocked(0, relayC), cp.markLocked(0, relayO)
 	cp.mu.Unlock()
-	if !onC.After(time.Now()) || !onO.IsZero() {
-		t.Fatalf("after the path change slot 0 is benched on %s until %v and on %s until %v — want VK's relay benched (its ten seats), the own relay not", relayC, onC, relayO, onO)
+	if !onC.IsZero() || !onO.IsZero() {
+		t.Fatal("path change imposed a local quota mark")
 	}
 	for conn := 0; conn < 10; conn++ {
 		cp.release(0, held[conn], relayC)
@@ -501,8 +413,8 @@ func TestAnonModeTheSeatsStayWithTheRelayTheyWereCreatedOnAcrossAPathChange(t *t
 	cp.health.answered("", time.Time{})
 	cp.noteRelayUnanswered(11, 0, held[0], relayO, time.Now())
 	addr, _, slot = mustGet(t, cp, 11)
-	if slot == 0 || addr != relayC || mints.Load() != 2 {
-		t.Fatalf("conn 11 with the own relay dead again: %q on slot %d, mints %d — want a fresh credential (slot 0's ten seats on %s may still be held: a 486 cascade)", addr, slot, mints.Load(), relayC)
+	if slot != 0 || addr != relayC || mints.Load() != 1 {
+		t.Fatalf("relay fallback after path change = %q slot %d, mints %d — want the cached credential", addr, slot, mints.Load())
 	}
 }
 
@@ -554,122 +466,48 @@ func TestTheQuotaCheckedIsTheRelaysTheConnectionDials(t *testing.T) {
 	_ = k
 }
 
-// A 486 benches the credential ON THE RELAY it came from: on another relay
-// of the list the same credential has a quota of its own (relayhist.go).
-func TestA486BenchesTheCredentialOnTheRelayItCameFrom(t *testing.T) {
+// A quota response is observable and does not block reuse of valid credentials.
+func TestA486LeavesCachedCredentialAvailableForRetry(t *testing.T) {
 	cp, mints, _ := relayPoolN(t, "", 4, relayC)
 	cp.setOverride(turnOverride{servers: []string{relayA, relayB}})
-	cp.setColdStartTarget(30)
-	addr, creds, slot := mustGet(t, cp, 0)
-	if addr != relayA || slot != 0 {
-		t.Fatalf("conn 0: %q on slot %d", addr, slot)
+	_, creds, slot := mustGet(t, cp, 0)
+	if cooldown := cp.markSaturated(slot, creds, relayA); cooldown != 0 {
+		t.Fatalf("local cooldown = %s", cooldown)
 	}
-	if cd := cp.markSaturated(0, creds, relayA); cd <= 0 {
-		t.Fatalf("the 486 on %s applied no cooldown (%v)", relayA, cd)
-	}
-	cp.mu.Lock()
-	onA, onB := cp.markLocked(0, relayA), cp.markLocked(0, relayB)
-	cp.cursor[1] = 1
-	cp.mu.Unlock()
-	if !onA.After(time.Now()) || !onB.IsZero() {
-		t.Fatalf("after a 486 from %s slot 0 is benched on it until %v and on %s until %v — want the one relay benched", relayA, onA, relayB, onB)
-	}
-	if addr, _, slot := mustGet(t, cp, 1); addr != relayB || slot != 0 || mints.Load() != 1 {
-		t.Fatalf("conn 1 at the cursor on %s after the 486 on %s: %q on slot %d, mints %d — want %s on slot 0, no mint", relayB, relayA, addr, slot, mints.Load(), relayB)
+	cp.release(slot, creds, relayA)
+	if addr, _, next := mustGet(t, cp, 1); addr != relayA || next != slot || mints.Load() != 1 {
+		t.Fatalf("quota retry = %s slot %d, mints %d", addr, next, mints.Load())
 	}
 }
 
-// The cache keeps the last use BY RELAY (`used_on`): the next start applies
-// the clock to the relay it belongs to — a slot dialling another relay of
-// the list is ready there. A file from before the field (one `last_used_at`)
-// is read as every relay's.
-func TestTheCacheKeepsTheLastUseByRelay(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "creds-pool.json")
+// Persisted credentials can be reused immediately on either configured relay.
+func TestSavedCredentialsAreImmediatelyUsableOnEveryRelay(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "creds-pool.json")
 	cp, _, _ := relayPoolN(t, path, 4, relayC)
 	cp.setOverride(turnOverride{servers: []string{relayA, relayB}})
-	addr, creds, slot := mustGet(t, cp, 0)
-	if addr != relayA || slot != 0 {
-		t.Fatalf("conn 0: %q on slot %d", addr, slot)
-	}
-	cp.release(0, creds, relayA)
+	_, creds, slot := mustGet(t, cp, 0)
+	cp.release(slot, creds, relayA)
 	cp.saveToDisk()
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var f credCacheFile
-	if err := json.Unmarshal(raw, &f); err != nil {
-		t.Fatal(err)
-	}
-	if len(f.Creds) != 1 || f.Creds[0].UsedOn[relayA] == 0 || f.Creds[0].UsedOn[relayB] != 0 || f.Creds[0].LastUsedAt != f.Creds[0].UsedOn[relayA] {
-		t.Fatalf("the file: %+v — want used_on with %s alone, last_used_at the same moment", f.Creds, relayA)
-	}
-	// The next start: pending on A, ready on B.
-	cp2, _, _ := relayPoolN(t, path, 4, relayC)
+	cp2, mints, _ := relayPoolN(t, path, 4, relayC)
 	cp2.setOverride(turnOverride{servers: []string{relayA, relayB}})
-	cp2.mu.Lock()
-	onA, onB := cp2.clockLocked(0, relayA), cp2.clockLocked(0, relayB)
-	freshA, freshB, pending := cp2.freshOnLocked(0, relayA), cp2.freshOnLocked(0, relayB), cp2.pendingLocked(0)
-	cp2.mu.Unlock()
-	if !onA.After(time.Now()) || !onB.IsZero() || freshA || !freshB || !pending {
-		t.Fatalf("loaded: clock on %s %v, on %s %v, fresh %v / %v, pending %v — want A's clock running, B's none", relayA, onA, relayB, onB, freshA, freshB, pending)
-	}
-	// A connection whose cursor stands on B is seated — on B.
-	cp2.mu.Lock()
-	cp2.cursor[7] = 1
-	cp2.mu.Unlock()
-	if addr, _, slot := mustGet(t, cp2, 7); addr != relayB || slot != 0 {
-		t.Fatalf("conn 7 at the cursor on B: %q on slot %d — want B on slot 0 (no clock there)", addr, slot)
-	}
-	// A file from before `used_on`: the one last use applies to every relay.
-	old := writeCache(t, t.TempDir(), credCacheEntry{Slot: 0, Address: relayC, Addresses: []string{relayC}, Username: futureUser("old"), Password: "p", LastUsedAt: time.Now().Add(-time.Minute).Unix()})
-	cp3, _, _ := relayPoolN(t, old, 4, relayC)
-	cp3.setOverride(turnOverride{servers: []string{relayA, relayB}})
-	cp3.mu.Lock()
-	a3, b3 := cp3.clockLocked(0, relayA), cp3.clockLocked(0, relayB)
-	cp3.mu.Unlock()
-	if !a3.After(time.Now()) || !b3.After(time.Now()) {
-		t.Fatalf("a file without used_on: clock on %s %v, on %s %v — want the one last use on every relay", relayA, a3, relayB, b3)
+	for i, want := range []string{relayA, relayB} {
+		cp2.mu.Lock()
+		cp2.cursor[i] = i
+		cp2.mu.Unlock()
+		if addr, _, next := mustGet(t, cp2, i); addr != want || next != 0 || mints.Load() != 0 {
+			t.Fatalf("cached retry %d = %s slot %d", i, addr, next)
+		}
 	}
 }
 
-// The user's review of 461 (1): a file from before `used_on` was loaded with
-// its one last use as every relay's; the credential then ran on the own relay
-// and the save wrote `used_on` with that relay alone — the next load, seeing
-// the field, dropped the old clock with nine minutes still on it. The history
-// whose relay is not known is saved under "*" and applies to every relay.
-func TestAFileFromBeforeUsedOnKeepsItsClockAcrossASave(t *testing.T) {
-	dir := t.TempDir()
-	old := writeCache(t, dir, credCacheEntry{Slot: 0, Address: relayC, Addresses: []string{relayC}, Username: futureUser("old"), Password: "p", LastUsedAt: time.Now().Add(-time.Minute).Unix()})
-	cp, _, _ := relayPoolN(t, old, 4, relayC)
-	list, _ := ParseTURNServers(relayO + ":0," + TURNServersVK)
-	cp.setOverride(turnOverride{servers: list})
-	addr, creds, slot := mustGet(t, cp, 0)
-	if addr != relayO || slot != 0 {
-		t.Fatalf("conn 0: %q on slot %d — want the own relay on slot 0", addr, slot)
-	}
-	cp.release(0, creds, relayO)
+// Saving a legacy cache removes usage timestamps from the new snapshot.
+func TestLegacyUsageHistoryIsDroppedOnSave(t *testing.T) {
+	path := writeCache(t, t.TempDir(), credCacheEntry{Slot: 0, Address: relayC, Addresses: []string{relayC}, Username: futureUser("old"), Password: "p", LastUsedAt: time.Now().Unix()})
+	cp, _, _ := relayPoolN(t, path, 4, relayC)
 	cp.saveToDisk()
-	raw, err := os.ReadFile(old)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var f credCacheFile
-	if err := json.Unmarshal(raw, &f); err != nil {
-		t.Fatal(err)
-	}
-	if len(f.Creds) != 1 || f.Creds[0].UsedOn["*"] == 0 || f.Creds[0].UsedOn[relayO] == 0 {
-		t.Fatalf("the saved file: %+v — want used_on with \"*\" (the old history) beside %s", f.Creds, relayO)
-	}
-	cp2, _, _ := relayPoolN(t, old, 4, relayC)
-	cp2.setOverride(turnOverride{servers: list})
-	cp2.mu.Lock()
-	onC, onO := cp2.clockLocked(0, relayC), cp2.clockLocked(0, relayO)
-	cp2.mu.Unlock()
-	left := time.Until(onC)
-	if left < 8*time.Minute || left > 9*time.Minute+30*time.Second || !onO.IsZero() {
-		t.Fatalf("after the save the clock on %s has %v left (want ≈9 min: the old history), on %s %v (want none)", relayC, left.Round(time.Second), relayO, onO)
+	file := readReleasedCache(t, path)
+	if len(file.Creds) != 1 || file.Creds[0].LastUsedAt != 0 || len(file.Creds[0].UsedOn) != 0 || len(file.RelayUsedAt) != 0 {
+		t.Fatalf("obsolete history persisted in cache: %+v", file)
 	}
 }
 
@@ -711,37 +549,13 @@ func TestTheReTryIsJudgedOnTheRelayItDials(t *testing.T) {
 	}
 }
 
-// The user's review of 462 (1): the load wrote the latest moment over every
-// `used_on` record onto the entry's own history, and the next save wrote it
-// back as "*" — a relay never used was quarantined on the own relay's history.
-// The entry's own history comes from "*" or a legacy file alone; the latest
-// moment is for the log line.
-func TestASavedRelayHistoryDoesNotBecomeEveryRelays(t *testing.T) {
-	dir := t.TempDir()
-	used := time.Now().Add(-time.Minute).Unix()
-	path := writeCache(t, dir, credCacheEntry{Slot: 0, Address: relayC, Addresses: []string{relayC}, Username: futureUser("own-only"), Password: "p", LastUsedAt: used, UsedOn: map[string]int64{relayO: used}})
-	list, _ := ParseTURNServers(relayO + ":0," + TURNServersVK)
-	cp, _, _ := relayPoolN(t, path, 4, relayC)
-	cp.setOverride(turnOverride{servers: list})
-	cp.saveToDisk()
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var f credCacheFile
-	if err := json.Unmarshal(raw, &f); err != nil {
-		t.Fatal(err)
-	}
-	if len(f.Creds) != 1 || f.Creds[0].UsedOn["*"] != 0 || f.Creds[0].UsedOn[relayO] == 0 || f.Creds[0].LastUsedAt != used {
-		t.Fatalf("after a load and a save: %+v — want used_on with %s alone (no \"*\" out of the own relay's history), last_used_at kept", f.Creds, relayO)
-	}
-	cp2, _, _ := relayPoolN(t, path, 4, relayC)
-	cp2.setOverride(turnOverride{servers: list})
-	cp2.mu.Lock()
-	onC, onO := cp2.clockLocked(0, relayC), cp2.clockLocked(0, relayO)
-	cp2.mu.Unlock()
-	if !onC.IsZero() || !onO.IsZero() {
-		t.Fatalf("the next load: a clock on %s until %v, on %s until %v — want none (the own relay's history is the own relay's)", relayC, onC, relayO, onO)
+// Per-relay history in legacy caches is ignored when connecting.
+func TestLegacyPerRelayHistoryDoesNotDelayConnection(t *testing.T) {
+	used := time.Now().Unix()
+	path := writeCache(t, t.TempDir(), credCacheEntry{Slot: 0, Address: relayC, Addresses: []string{relayC}, Username: futureUser("own-only"), Password: "p", LastUsedAt: used, UsedOn: map[string]int64{relayO: used}})
+	cp, mints, _ := relayPoolN(t, path, 4, relayC)
+	if addr, _, slot := mustGet(t, cp, 0); addr != relayC || slot != 0 || mints.Load() != 0 {
+		t.Fatalf("legacy cache connection = %s slot %d", addr, slot)
 	}
 }
 
@@ -1039,10 +853,10 @@ func TestTheColdStartCapCountsByTheRelayTheConnectionDials(t *testing.T) {
 			cp.MarkInUseSlotsForPathChange()
 			cp.mu.Lock()
 			cp.pauseAcquireUntil = time.Time{}
-			benched := cp.markLocked(0, relayB).After(time.Now()) && cp.markLocked(1, relayB).After(time.Now()) && cp.markLocked(0, relayA).IsZero()
+			benched := cp.markLocked(0, relayB).After(time.Now()) || cp.markLocked(1, relayB).After(time.Now()) || !cp.markLocked(0, relayA).IsZero()
 			cp.mu.Unlock()
-			if !benched {
-				t.Fatalf("after the path change the slots are not benched on B alone")
+			if benched {
+				t.Fatal("path change imposed a local quota mark")
 			}
 			for conn := 0; conn < 4; conn++ {
 				cp.release(conn/2, held[conn], relayB)
@@ -1059,8 +873,8 @@ func TestTheColdStartCapCountsByTheRelayTheConnectionDials(t *testing.T) {
 			if err != nil {
 				t.Fatalf("conn 0 with the slots benched on B and free on silent A: %v — want a fresh credential (the cap counted the slots ready on A)", err)
 			}
-			if mints.Load() != 1 || creds.Username == held[0].Username || creds.Username == held[2].Username {
-				t.Fatalf("conn 0: %q on slot %d, mints %d — want a fresh credential", addr, slot, mints.Load())
+			if addr != relayB || mints.Load() != 0 || (creds.Username != held[0].Username && creds.Username != held[2].Username) {
+				t.Fatalf("conn 0: %q on slot %d, mints %d — want a cached credential", addr, slot, mints.Load())
 			}
 		})
 	}
@@ -1079,11 +893,11 @@ func TestASlotCountsAsReadyForTheConnectionItCanSeat(t *testing.T) {
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
 	cp.cursor[0], cp.cursor[1] = 0, 1
-	if !cp.availableForLocked(0, 0) || cp.availableForLocked(0, 1) {
-		t.Fatalf("slot 0 benched on B: ready for conn 0 (on A) %v, for conn 1 (on B) %v — want true, false", cp.availableForLocked(0, 0), cp.availableForLocked(0, 1))
+	if !cp.availableForLocked(0, 0) || !cp.availableForLocked(0, 1) {
+		t.Fatalf("slot 0 benched on B: ready for conn 0 (on A) %v, for conn 1 (on B) %v — want true, true", cp.availableForLocked(0, 0), cp.availableForLocked(0, 1))
 	}
-	if cp.countAvailableForLocked(0) != 1 || cp.countAvailableForLocked(1) != 0 || cp.countAvailableLocked() != 1 {
-		t.Fatalf("counts: for conn 0 %d, for conn 1 %d, the slot's own %d — want 1, 0, 1", cp.countAvailableForLocked(0), cp.countAvailableForLocked(1), cp.countAvailableLocked())
+	if cp.countAvailableForLocked(0) != 1 || cp.countAvailableForLocked(1) != 1 || cp.countAvailableLocked() != 1 {
+		t.Fatalf("counts: for conn 0 %d, for conn 1 %d, the slot's own %d — want 1, 1, 1", cp.countAvailableForLocked(0), cp.countAvailableForLocked(1), cp.countAvailableLocked())
 	}
 }
 

@@ -614,13 +614,18 @@ func (c *console) startProxy() error {
 		CaptchaSolver:    noCaptchaUI,
 		GOMAXPROCS:       gomax,
 		CredPoolSize:     size,
+		OnRetry: func(err error, delay time.Duration) {
+			if c.o.desktopTraffic {
+				printDesktopRetry(os.Stdout, err, delay)
+			}
+		},
 	})
 	mode := "anonymous"
 	if c.cookie != "" {
 		mode = fmt.Sprintf("VK login, %d call link(s)", len(st.VKLinks))
 	}
 	log.Printf("vk-turn-proxy-console %s: server %q, %d connections over %s, pool %d identities (%s), pacer %s",
-		version, st.ServerName, st.NumConns, transportName(st.UseUDP), size, mode, paceName(st.UplinkPaceKiB))
+		version, st.ServerName, st.NumConns, transportName(st.UseUDP), c.p.GetStats().CredPoolSize, mode, paceName(st.UplinkPaceKiB))
 	go func() {
 		if err := c.p.Start(); err != nil {
 			log.Printf("proxy: %v", err)

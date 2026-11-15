@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"sort"
 	"strings"
 	"time"
 )
@@ -53,8 +52,7 @@ func (cp *credPool) setOverride(o turnOverride) {
 			// The marks and the last use are the RELAY's the seats were on
 			// (relayhist.go): a slot re-pointed to another relay starts there
 			// with neither, and keeps the old relay's for the fallback.
-			cp.applyRelayQuarantineLocked(i) // the clock of the relay the slot dials NOW (cookie mode)
-			cp.sayReadyDespiteTheClockLocked(i, "TURN relay override")
+
 			cp.syncMinterLocked(i)
 		}
 	}
@@ -600,7 +598,7 @@ func (cp *credPool) reresolveOverride(reason string, limited bool) {
 			continue
 		}
 		cp.pool[i].addrs = cp.candidatesForSlot(i, cp.pool[i].creds)
-		cp.applyRelayQuarantineLocked(i)
+
 	}
 	cp.mu.Unlock()
 	log.Printf("credpool: TURN relay override resolved again (%s): %s → %s", reason, before, strings.Join(servers, ", "))
@@ -657,24 +655,6 @@ func (cp *credPool) unlimitedRelayLocked(slot int) string {
 // (capOnLocked, roomOnLocked).
 func (cp *credPool) capLocked(slot int) int {
 	return cp.capOnLocked(cp.dialNowLocked(slot))
-}
-
-// quarantinedRelays: the relays whose quota clock is running (cookie mode) —
-// what the minter's discovery is told to prefer others over. Not under cp.mu.
-func (cp *credPool) quarantinedRelays() []string {
-	if cp == nil {
-		return nil
-	}
-	cp.mu.Lock()
-	defer cp.mu.Unlock()
-	var out []string
-	for relay := range cp.relayUsedAt {
-		if !cp.relayQuarantineUntilLocked(relay).IsZero() {
-			out = append(out, relay)
-		}
-	}
-	sort.Strings(out)
-	return out
 }
 
 // heldRelaysExcept lists the relays the pool's slots hold — every filled
@@ -787,24 +767,6 @@ func (cp *credPool) freeListRelayLocked(slot int) string {
 	return ""
 }
 
-// rebindSlotLocked (cookie mode under a list): the list changed under a
-// filled slot — its relay is ITS OWN, not the list's s-th entry (the user's
-// review of 454: a DNS answer in the other order re-pointed slot 0, ten leases
-// on A, to B by index, and slot 1, now "on A" with none, was handed an
-// eleventh). The slot keeps its relay while the list still names it. A slot
-// whose relay the list dropped keeps it while leases are live on it — the
-// seats are that relay's, its releases move that relay's clock, and the slot
-// is handed out no more (configuredOffLocked) — and takes the free entry of
-// the list once none is: here, or at the release that frees the last seat
-// (rebindOverrideSlotsLocked). Beyond the list the slot dials nothing once
-// its leases are gone.
-//
-// Two passes over the pool (rebindOverrideSlotsLocked): first every slot that
-// LOSES its relay lets go of it — beyond the list, or a dropped relay with no
-// lease left — then every slot of the list without a relay takes a free entry.
-// In one pass, slot 0 found B still slot 1's while slot 1 was yet to be
-// switched off as beyond the shrunk list [B]: both ended without a relay and
-// B sat idle (the user's review of 455).
 func (cp *credPool) rebindSlotLocked(slot int, reason string) {
 	cp.releaseStaleRelayLocked(slot, reason)
 	cp.takeFreeEntryLocked(slot, reason)
@@ -832,7 +794,7 @@ func (cp *credPool) releaseStaleRelayLocked(slot int, reason string) {
 		return // the list still names it
 	}
 	e.addrs = nil
-	cp.applyRelayQuarantineLocked(slot)
+
 	cp.syncMinterLocked(slot)
 	if slot >= len(fixed) {
 		log.Printf("credpool: slot %d: beyond the TURN override list (%s) and its leases on %s are gone — the slot dials nothing", slot, reason, cur)
@@ -855,7 +817,7 @@ func (cp *credPool) takeFreeEntryLocked(slot int, reason string) {
 	}
 	cp.pool[slot].addrs = []string{next}
 	cp.pool[slot].addr = next
-	cp.applyRelayQuarantineLocked(slot)
+
 	cp.syncMinterLocked(slot)
 	log.Printf("credpool: slot %d: the TURN override list (%s) has a free entry — the slot dials %s", slot, reason, next)
 }
@@ -875,60 +837,14 @@ func (cp *credPool) rebindOverrideSlotsLocked(reason string) {
 	}
 }
 
-// relayQuarantineUntilLocked: until when the relay's seats may still be held
-// by leases that ended (cookie mode: one okcdn user id, the quota the
-// relay's) — the zero time when the relay was not used within the cooldown.
-func (cp *credPool) relayQuarantineUntilLocked(relay string) time.Time {
-	if cp.mode != credCacheModeCookie || relay == "" || cp.override.unlimited(relay) {
-		return time.Time{} // a relay without a quota holds no seats
-	}
-	t, ok := cp.relayUsedAt[relay]
-	if !ok {
-		return time.Time{}
-	}
-	if until := t.Add(credSaturationCooldown); until.After(time.Now()) {
-		return until
-	}
-	return time.Time{}
-}
-
-// noteRelayUsedLocked: a lease on slot's relay ended at `at` — the relay's
-// clock moves (cookie mode; the relay the slot DIALS, one in that mode).
-func (cp *credPool) noteRelayUsedLocked(slot int, at time.Time) {
-	if cp.mode != credCacheModeCookie {
-		return
-	}
-	if c := cp.candidatesLocked(slot); len(c) == 1 && at.After(cp.relayUsedAt[c[0]]) {
-		cp.relayUsedAt[c[0]] = at
-	}
-}
-
-// applyRelayQuarantineLocked (cookie mode): slot's availableAt IS the clock
-// of the relay it dials now — not of a relay it dialled under an earlier
-// override, not of a twin on another relay (the user's review of 450: A's
-// quarantine carried onto a never-used B; a twin's quarantine lost with it).
-// The slot's own history lives in the clock already (noteRelayUsedLocked,
-// loadFromDisk). Anonymous mode: the entry's own availableAt, untouched.
-func (cp *credPool) applyRelayQuarantineLocked(slot int) {
-	if cp.mode != credCacheModeCookie || slot < 0 || slot >= len(cp.pool) || cp.pool[slot].creds == nil {
-		return
-	}
-	var until time.Time
-	if c := cp.candidatesLocked(slot); len(c) == 1 {
-		until = cp.relayQuarantineUntilLocked(c[0])
-	}
-	cp.pool[slot].availableAt = until
-}
-
-// placeLocked puts an entry into slot and applies the relay's quota clock to
-// it (cookie mode) — the ONE way an entry with a credential enters the pool.
+// placeLocked publishes credentials while preserving live lease accounting.
 func (cp *credPool) placeLocked(slot int, e credPoolEntry) {
 	for len(cp.pool) <= slot {
 		cp.pool = append(cp.pool, credPoolEntry{})
 	}
 	cp.pool[slot].stopSaturationTimers()
 	cp.pool[slot] = e
-	cp.applyRelayQuarantineLocked(slot)
+
 	cp.syncMinterLocked(slot)
 }
 

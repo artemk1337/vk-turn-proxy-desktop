@@ -31,6 +31,8 @@ type State struct {
 type ConnectionState struct {
 	State                 string  `json:"state"`
 	TrafficBytesPerSecond float64 `json:"trafficBytesPerSecond"`
+	RetryError            string  `json:"retryError"`
+	RetryAt               int64   `json:"retryAt"`
 }
 type VKState struct {
 	Status   string `json:"status"`
@@ -38,6 +40,9 @@ type VKState struct {
 }
 
 type App struct {
+	speedTest     SpeedTestState
+	speedCancel   context.CancelFunc
+	speedRun      uint64
 	mu            sync.Mutex
 	routingMu     sync.Mutex
 	routingData   *routingdata.Store
@@ -49,6 +54,8 @@ type App struct {
 	vk            VKState
 	generation    uint64
 	connection    string
+	retryError    string
+	retryAt       int64
 	traffic       trafficSample
 	session       *backendSession
 	logs          Logs
@@ -115,7 +122,7 @@ func (a *App) snapshot() State {
 		profiles[i].Routing = cloneRouting(profiles[i].Routing)
 	}
 	return State{Preferences: a.preferences, Defaults: defaults, Profiles: profiles,
-		ActiveID: a.profiles.ActiveID, Connection: ConnectionState{State: a.connection, TrafficBytesPerSecond: traffic}, VK: vk, Error: a.lastError}
+		ActiveID: a.profiles.ActiveID, Connection: ConnectionState{State: a.connection, TrafficBytesPerSecond: traffic, RetryError: a.retryError, RetryAt: a.retryAt}, VK: vk, Error: a.lastError}
 }
 
 func (a *App) GetState() State {
@@ -234,6 +241,7 @@ func (a *App) SelectProfile(id string) (State, error) {
 	if !slices.ContainsFunc(a.profiles.Profiles, func(p Profile) bool { return p.ID == id }) {
 		return a.snapshot(), errors.New("Selected profile does not exist.")
 	}
+	a.cancelSpeedTestLocked()
 	store := a.profiles
 	store.ActiveID = id
 	if err := saveProfiles(a.root, store); err != nil {
@@ -362,6 +370,7 @@ func (a *App) Exit() {
 			return
 		}
 		a.connection = "disconnecting"
+		a.retryError, a.retryAt = "", 0
 	}
 	a.cancel()
 	a.mu.Unlock()

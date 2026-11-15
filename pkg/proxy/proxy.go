@@ -34,15 +34,19 @@ import (
 
 // Config holds proxy configuration.
 type Config struct {
-	PeerAddr         string        // vk-turn-proxy server address (host:port)
-	TurnServer       string        // override TURN server host (optional; the older pair — TurnServers wins when set)
-	TurnPort         string        // override TURN port (optional)
-	TurnServers      []string      // override TURN relays, host:port each, or TURNServersVK for VK's own in its place: replaces VK's addresses for EVERY credential, cached ones included (relayhealth.go)
-	VKLink           string        // VK call invite link or link ID
-	UseDTLS          bool          // true = DTLS obfuscation (default mode)
-	UseUDP           bool          // true = UDP to TURN, false = TCP
-	NumConns         int           // number of concurrent connections (default 1)
-	CredPoolCooldown time.Duration // post-failure cooldown per slot in the cred pool; <=0 → default 2m
+	// OnRetry reports connection failures and their next retry delay. A nil error clears the report.
+	OnRetry func(error, time.Duration)
+
+	PeerAddr    string   // vk-turn-proxy server address (host:port)
+	TurnServer  string   // override TURN server host (optional; the older pair — TurnServers wins when set)
+	TurnPort    string   // override TURN port (optional)
+	TurnServers []string // override TURN relays, host:port each, or TURNServersVK for VK's own in its place: replaces VK's addresses for EVERY credential, cached ones included (relayhealth.go)
+	VKLink      string   // VK call invite link or link ID
+	UseDTLS     bool     // true = DTLS obfuscation (default mode)
+	UseUDP      bool     // true = UDP to TURN, false = TCP
+	NumConns    int      // number of concurrent connections (default 1)
+	// Deprecated: retained for source compatibility; credential cooldowns are unused.
+	CredPoolCooldown time.Duration
 	CaptchaSolver    CaptchaSolver // called when VK requires captcha (may be nil)
 	// SeededTURN, if non-nil, pre-populates credPool slot 0 with these
 	// credentials so the first conn establishes immediately without
@@ -294,7 +298,12 @@ type Proxy struct {
 
 	// ups records when sessions came up, per connection and proxy-wide — what
 	// the retry floor asks about (retryfloor.go).
-	ups sessionUps
+	ups          sessionUps
+	retryMu      sync.Mutex
+	retryAt      time.Time
+	quotaRetryAt time.Time
+	quotaError   error
+	quotaWake    chan struct{}
 
 	// dealloc counts Allocate attempts and confirmed releases on both relay
 	// transports (dealloc.go).
@@ -945,145 +954,32 @@ func (p *Proxy) startConnections() error {
 		}
 	}
 
-	// Bootstrap retry loop — conn 0's first DTLS+TURN handshake can fail
-	// transiently for several network reasons:
-	//   - iOS VPN policy applied mid-handshake (kernel closes the UDP
-	//     socket under us; surfaces as "broken pipe" / "use of closed
-	//     network connection"). The 1.5s settle delay in
-	//     wgStartVKBootstrap isn't always enough.
-	//   - WiFi handover / DHCP setup not finished when bootstrap begins.
-	//   - Carrier-grade NAT mapping warmup on cellular reconnect.
-	//   - Slow DNS or routing convergence on a fresh network.
-	//
-	// Up to 4 attempts × 15s DTLS handshake timeout + 3 backoffs × 10s
-	// = ~90s total. Linear backoff (not exponential): each attempt has
-	// the same cost, so spreading evenly is fine.
-	//
-	// Retry triggers on ANY error EXCEPT captcha — captcha needs a user
-	// answer, retrying immediately just burns budget. Captcha-required
-	// drops out of this loop and surfaces via the captcha-pending path
-	// below.
-	const maxBootstrapAttempts = 7
-	// Linear-progressive backoff for the non-saturated retry path. The
-	// backoff before retrying into attempt N (N=2..7) is (N-1) * 10s:
-	// 10, 20, 30, 40, 50, 60 seconds. Cumulative timeline of attempt
-	// starts (5s dial timeout per attempt + the backoff before next):
-	//   attempt 1: t=0   (initial)
-	//   attempt 2: t=15  (5s dial + 10s wait)
-	//   attempt 3: t=40  (15 + 5 dial + 20 wait)
-	//   attempt 4: t=75
-	//   attempt 5: t=120
-	//   attempt 6: t=175
-	//   attempt 7: t=240 (4 minutes)
-	// Total bootstrap budget when all 7 fail: ~245s = ~4m5s.
-	//
-	// Rationale: pre-build-137 was maxBootstrapAttempts=4 with fixed
-	// 10s backoff = ~60s total. When network outages last >60s (e.g.
-	// a sustained ISP or route flap),
-	// the 60s budget exhausts and we wait for watchdog Condition 3
-	// to fire after 5 min of zero active conns, giving 5-6 min total
-	// dead-window per cycle. The 4-min budget here covers most
-	// transient network outages (most ISPs recover within 1-2 min),
-	// and if it still fails the watchdog cycle adds another ~1 min
-	// gap, NOT 5 min — bootstrap is doing the waiting work, not
-	// idling. For recoveries that happen mid-bootstrap-budget, the
-	// next attempt catches the recovery within at most 60s instead
-	// of waiting for the next 5-min watchdog tick.
-	bootstrapBackoff := func(failedAttempt int) time.Duration {
-		return time.Duration(failedAttempt) * 10 * time.Second
-	}
-	// Safety window beyond longest cooldown — guards against slot timer
-	// firing slightly after our calculated deadline (re-arms, scheduler
-	// jitter, etc). Empirically a few seconds is plenty.
-	const allSaturatedWaitSafety = 5 * time.Second
+	// Retry recoverable failures until the requested connection is cancelled.
 	err := spawnConn0()
-	for attempt := 1; err != nil && attempt < maxBootstrapAttempts; attempt++ {
+	for attempt := 1; err != nil; attempt++ {
 		var captchaErr *CaptchaRequiredError
-		if errors.As(err, &captchaErr) {
+		var callErr *CallUnavailableError
+		if errors.As(err, &captchaErr) || errors.As(err, &callErr) || CookieAuthFatalError() != "" {
 			break
 		}
-
-		// Adaptive backoff: when NO slots are usable (either all in 486
-		// cooldown OR partly saturated + empty slots that grower can't
-		// fill), fixed-duration retries are guaranteed to keep failing
-		// — the only thing that can plausibly help is a saturation
-		// cooldown expiring (broadcasts on slotAvailableCh) or grower
-		// successfully seeding an empty slot (also broadcasts). Wait
-		// on the channel instead, with a deadline equal to the longest
-		// remaining cooldown (+safety).
-		//
-		// Why "available == 0" not "saturated == total": when 7 of 12
-		// slots are saturated and the other 5 are empty with grower
-		// blocked by PoW captcha cascade, available = 0 but saturated
-		// (7) != total (12). The old strict condition picked the
-		// fixed-backoff path, exhausted 4×10s budget in 40s, and
-		// returned — then the watchdog needed 5+ min to retry.
-		// Empirically observed in vpn.wifi-lte-wifi.2.log 2026-05-15
-		// 17:17:15: bootstrap exhausted at 17:17:45 even though slots
-		// [0,1,3,4,5] would expire at 17:18:54 (a 1m9s wait would have
-		// recovered); instead recovery came at 17:23:15 via second
-		// watchdog tick — wasted 4m20s. Pre-build-90 also hit this in
-		// vpn.wifi-lte-wifi.3.log 2026-05-08 21:21-21:33: 11m13s
-		// outage, ~4 min of which was waiting for the next watchdog
-		// tick after slots 0/2/4 had already cooled down at 21:29:00
-		// but no goroutine was listening for the broadcast.
-		slotCh := p.wakeChannelFor(err)
-		saturated, total, longest := p.credPool.saturationSnapshot()
-		available, _, _ := p.credPool.snapshotSize()
-		// canWaitForCooldown requires longest > 0 — without an active
-		// cooldown there's no guaranteed wake-up source (grower-fill
-		// broadcasts could fire but that's not bounded). Fall back to
-		// the progressive-backoff default in the no-cooldown case.
-		canWaitForCooldown := total > 0 && available == 0 && longest > 0
-
-		if canWaitForCooldown {
-			waitFor := longest + allSaturatedWaitSafety
-			log.Printf("proxy: bootstrap attempt %d/%d failed (%v), %d/%d slots saturated, 0 available — waiting up to %s for slot-available signal",
-				attempt, maxBootstrapAttempts, err, saturated, total, waitFor.Round(time.Second))
-			select {
-			case <-slotCh:
-				log.Printf("proxy: bootstrap attempt %d/%d woken by slot-available signal, retrying immediately",
-					attempt, maxBootstrapAttempts)
-			case <-time.After(waitFor):
-				log.Printf("proxy: bootstrap attempt %d/%d slot-wait timed out after %s, retrying",
-					attempt, maxBootstrapAttempts, waitFor.Round(time.Second))
-			case <-p.ctx.Done():
-				return p.ctx.Err()
-			}
-		} else {
-			backoff := bootstrapBackoff(attempt)
-			log.Printf("proxy: bootstrap attempt %d/%d failed (%v), retrying conn 0 after %s",
-				attempt, maxBootstrapAttempts, err, backoff)
-			select {
-			case <-time.After(backoff):
-			case <-p.ctx.Done():
-				return p.ctx.Err()
+		if sessCtx.Err() != nil {
+			return sessCtx.Err()
+		}
+		if p.ctx.Err() != nil {
+			return p.ctx.Err()
+		}
+		delay := reconnectDelayForError(err, attempt)
+		quotaWait := p.reportRetry(err, delay)
+		log.Printf("proxy: connection attempt %d failed (%v), retrying in %s", attempt, err, delay.Round(time.Millisecond))
+		if !quotaWait {
+			if waitErr := p.waitReconnect(sessCtx, delay); waitErr != nil {
+				return waitErr
 			}
 		}
-
 		err = spawnConn0()
-		if err == nil {
-			log.Printf("proxy: bootstrap attempt %d/%d succeeded", attempt+1, maxBootstrapAttempts)
-		}
 	}
 
 	if err != nil {
-		// Diagnostic: when bootstrap exhausts because pool has zero
-		// available slots (either all saturated, or partly saturated +
-		// empty slots that grower can't fill due to PoW captcha cascade),
-		// log a single clear line so post-mortem readers don't have to
-		// correlate N "[conn X] TURN allocate quota error" lines
-		// manually. The watchdog will re-trigger after 5 min — see
-		// vpn.wifi-lte-wifi.1.log 2026-05-08 (all-saturated case) and
-		// vpn.wifi-lte-wifi.2.log 2026-05-15 17:17 (partial-saturated +
-		// PoW-blocked case) for canonical examples.
-		saturated, total, longest := p.credPool.saturationSnapshot()
-		available, _, _ := p.credPool.snapshotSize()
-		if total > 0 && available == 0 {
-			log.Printf("proxy: bootstrap exhausted — %d/%d slots saturated (longest %s remaining), 0 available (waiting for cooldown expiry or grower fill; watchdog will retry)",
-				saturated, total, longest.Round(time.Second))
-		}
-
 		// If captcha is required during initial connection, don't fail —
 		// publish the captcha and wait for the user to solve it.
 		var captchaErr *CaptchaRequiredError
@@ -1417,8 +1313,8 @@ func (p *Proxy) wakeChannel() <-chan struct{} {
 // for 5 min → reconnect". Designed for the post-sleep/wake quota cascade,
 // where most conns were stuck dormant. Now obsolete:
 //   - Stuck conns get killed by the zombie probe in 2 min, not 5+
-//   - markSaturated handles 486-cascade with a 3m cooldown that wakes
-//     parked conns the moment it expires (broadcastSlotAvailable hook)
+//   - Actual quota refusals use a shared one-minute recovery probe while
+//     no sessions are working.
 //   - Captcha-triggered slow ramp-up commonly leaves us at "10/30 active
 //     for 5+ min" while VK rate-limits PoW for our IP. Forcing reconnect
 //     in that state killed 10 working conns and didn't help unstick VK.
@@ -1605,12 +1501,9 @@ func (p *Proxy) runWatchdog() {
 			// 5-minute threshold is long enough that the initial
 			// startup phase (typically 5-30s but can stretch to several
 			// minutes if the cred pool needs to fetch through captcha)
-			// finishes without us spuriously retrying it. After that,
-			// firing every 5 minutes gives saturated slots time to
-			// recover (3-minute markSaturated cooldown plus parked-conn
-			// wake-on-expiry, see broadcastSlotAvailable) between
-			// attempts and gives the cred-pool grower a window to fill
-			// new slots.
+			// finishes without us spuriously restarting it. Recoverable
+			// failures already retry continuously; this remains a fallback
+			// for a stalled connection lifecycle.
 			if active == 0 {
 				if zeroConnSince.IsZero() {
 					zeroConnSince = time.Now()
@@ -2047,20 +1940,10 @@ func (p *Proxy) StopWithTimeout(timeout time.Duration) {
 
 // runConnection runs a single connection slot with reconnection.
 // Reconnects on failure until sessCtx is cancelled (Pause/Resume) or global ctx is done (Stop).
-// After 3 consecutive short-lived failures, goes dormant for up to 1 minute.
-// This avoids hammering the TURN server (Allocation Quota Reached) while still
-// recovering without relying on iOS sleep()/wake() which are unreliable.
-//
-// Dormancy was 30-180s pre-build-88. Shortened to 30-60s once credpool
-// gained its own VK 486 protection layers (smart-pause / cascade-pause /
-// 12m activeAllocationsWindow / compact-fill) — the conn-side long
-// dormancy was double-insurance that primarily slowed real recovery. With
-// armPauseAcquireBroadcastLocked (creds.go) firing slotAvailableCh on
-// pause-expiry, the 30-60s cap rarely runs to completion anyway: conns
-// wake within ms of pool-state change.
+// Recoverable session failures reconnect with bounded exponential jitter.
 func (p *Proxy) runConnection(sessCtx context.Context, linkID string, readyCh chan<- struct{}, connIdx int) error {
 	signaled := false
-	shortFailures := 0
+	failures := 0
 	var floor retryFloor // this connection's retry floor — retryfloor.go
 
 	for {
@@ -2072,6 +1955,9 @@ func (p *Proxy) runConnection(sessCtx context.Context, linkID string, readyCh ch
 		default:
 		}
 
+		if err := p.waitQuotaProbe(sessCtx); err != nil {
+			return err
+		}
 		start := time.Now()
 		// A NEW SESSION GETS A FRESH BUCKET. `paceBuckets` is indexed by connection
 		// index at package scope, so without this a connection that reconnects onto
@@ -2109,6 +1995,7 @@ func (p *Proxy) runConnection(sessCtx context.Context, linkID string, readyCh ch
 		established := p.ups.since(connIdx, start)
 		if established {
 			floor.reset()
+			failures = 0
 		}
 		// A restart WE asked for (a path-up) ended this session, not the
 		// path: no failure count, no dormancy, a sub-second stagger so the
@@ -2120,7 +2007,7 @@ func (p *Proxy) runConnection(sessCtx context.Context, linkID string, readyCh ch
 		if asked {
 			log.Printf("proxy: [conn %d] session ended after %s by request (path change) — restarting now",
 				connIdx, time.Since(start).Round(time.Second))
-			shortFailures = 0
+			failures = 0
 			floor.reset() // a new network: the old one's failures say nothing about it
 			select {
 			case <-time.After(restartStagger()):
@@ -2130,6 +2017,16 @@ func (p *Proxy) runConnection(sessCtx context.Context, linkID string, readyCh ch
 				return p.ctx.Err()
 			}
 			continue
+		}
+		if sessCtx.Err() != nil {
+			return sessCtx.Err()
+		}
+		if p.ctx.Err() != nil {
+			return p.ctx.Err()
+		}
+		endedWithoutError := err == nil
+		if endedWithoutError {
+			err = errors.New("transport session ended")
 		}
 		if err != nil {
 			duration := time.Since(start)
@@ -2148,82 +2045,17 @@ func (p *Proxy) runConnection(sessCtx context.Context, linkID string, readyCh ch
 				floored = true
 			}
 
-			// If the session ended because of a captcha requirement and
-			// it was already handled (solved or pending), don't count as failure.
-			var captchaErr *CaptchaRequiredError
-			if errors.As(err, &captchaErr) {
-				log.Printf("proxy: session ended with captcha requirement, not counting as failure")
-				shortFailures = 0
-			} else if duration > 5*time.Minute {
-				shortFailures = 0 // session was healthy
-			} else {
-				shortFailures++
-			}
-
-			// After 3 consecutive short-lived failures, go dormant for up to 1 minute.
-			// Originally up to 3 minutes — the long ceiling protected VK from
-			// post-cascade Allocate burst before the credpool layer could.
-			// Build 87+ has its own 486 defenses (smart-pause + cascade pause +
-			// 12m activeAllocationsWindow + compact-fill); the long dormancy
-			// became double-insurance that mostly hurt recovery. Shortened to
-			// 30-60s in build 88. Critically, slotAvailableCh below short-circuits
-			// the wait the moment pool state changes — including pauseAcquireUntil
-			// expiry now that armPauseAcquireBroadcastLocked fires on it — so most
-			// dormancies wake within ms of the pool unblocking, not at the cap.
-			if shortFailures >= 3 {
-				// Stagger dormancy wake-up: random 30-60s so all conns
-				// don't try to reconnect simultaneously (which used to
-				// cause Quota Reached before credpool's own protection).
-				dormantDuration := time.Duration(30+mathrand.Intn(30)) * time.Second
-				log.Printf("proxy: %d consecutive short failures, sleeping %s before retry", shortFailures, dormantDuration.Round(time.Second))
-				// slotAvailableCh wakes the conn early on any pool-state
-				// change that could plausibly let it succeed: a fresh
-				// cred just landed in some slot (background grower or
-				// another conn's Phase 2 fetch), or a release freed
-				// capacity. Without this, "no slot available" failures
-				// — common during cascade reconnects — wait out the
-				// full random dormancy regardless of when slots reopen.
-				slotCh := p.wakeChannelFor(err)
-				woke, werr := p.waitRetry(sessCtx, connIdx, dormantDuration, slotCh, &floor, floored)
-				if werr != nil {
-					return werr
-				}
-				switch woke {
-				case retryWakeTimer:
-					shortFailures = 0 // reset after dormancy
-					log.Printf("proxy: waking from dormancy, retrying connection")
-					// DON'T wholesale-invalidate the pool here. This conn was
-					// dormant, but other conns may have been running fine on
-					// existing creds — wholesale-invalidate destroys them and
-					// forces every conn to re-fetch (which often hits captcha).
-					// If our retry uses a stale cred and gets a short-lived
-					// session, the per-slot invalidateEntry path (line ~1228)
-					// drops only that bad slot. Other conns keep their creds.
-				case retryWakeSignal:
-					// Slot-state change happened. Reset the failure
-					// counter — the prior failures were "no slot
-					// available" or quota-driven, and external state
-					// changed in a way that may resolve them. Treat
-					// this as a fresh start instead of letting the
-					// next failure immediately re-trigger dormancy.
-					//
-					// 🚨 Not the retry floor's streak: after a network-class
-					// failure waitRetry has already held this wake back under
-					// the floor, and the streak resets only on evidence that
-					// the network works (retryfloor.go).
-					shortFailures = 0
-					log.Printf("proxy: waking from dormancy on slot-available signal, retrying")
-				}
+			failures++
+			delay := reconnectDelayForError(err, failures)
+			quotaWait := p.reportRetry(err, delay)
+			log.Printf("proxy: [conn %d] retrying in %s", connIdx, delay.Round(time.Millisecond))
+			if quotaWait {
 				continue
 			}
-
-			// Staggered delay before reconnect: random 2-7s to avoid
-			// all connections hitting TURN server at the same instant.
-			// slotAvailableCh short-circuits the wait when an in-flight
-			// pool-state change makes immediate retry sensible — see
-			// dormancy comment above.
-			delay := time.Duration(2000+mathrand.Intn(5000)) * time.Millisecond
-			slotCh := p.wakeChannelFor(err)
+			var slotCh <-chan struct{}
+			if !endedWithoutError && !isQuotaError(err) && !isAuthError(err) {
+				slotCh = p.wakeChannelFor(err)
+			}
 			if _, werr := p.waitRetry(sessCtx, connIdx, delay, slotCh, &floor, floored); werr != nil {
 				return werr
 			}
@@ -2312,7 +2144,7 @@ func (p *Proxy) fetchFreshCreds(allowCaptchaBlock bool, slot int) (string, *TURN
 		// conns spread across relays — each (okcdn_userid, relay) is its own ~10
 		// allocation quota (2026-06-28 finding). No captcha bookkeeping here.
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		c, cerr := cookieCredForSlot(ctx, slot, p.credPool.overrideServers(), p.credPool.heldRelaysExcept(slot), p.credPool.quarantinedRelays()) // the pool's list, resolved (#105)
+		c, cerr := cookieCredForSlot(ctx, slot, p.credPool.overrideServers(), p.credPool.heldRelaysExcept(slot), nil) // the pool's list, resolved (#105)
 		cancel()
 		if cerr != nil {
 			if errors.Is(cerr, ErrCookieRejected) {
@@ -2405,6 +2237,7 @@ func (p *Proxy) relayUnanswered(connIdx, slot int, creds *TURNCreds, turnAddr st
 // connect names as serverAddress (TURNServerIP).
 func (p *Proxy) relayAllocatedAt(slot int, creds *TURNCreds, turnAddr string, attempt time.Time) {
 	p.credPool.noteAllocatedAt(slot, creds, turnAddr, attempt)
+	p.reportRetry(nil, 0)
 	if host, ok := relayHostToPublish(turnAddr); ok { // an IP or nothing: iOS refuses a name as the tunnel's address (#105)
 		p.turnServerIP.Store(host)
 	}
@@ -2512,17 +2345,8 @@ func (p *Proxy) runDTLSSession(sessCtx context.Context, linkID string, readyCh c
 				// startConnections would burn its 4-attempt budget retrying
 				// the same saturated slot.
 				if isQuotaError(turnErr) {
-					// markSaturated picks an adaptive cooldown based on
-					// the slot's lastUsedAt — short (3m) if 486 is from
-					// likely-ghost state, long (11m) if VK still holds
-					// our active allocations from a recent session that
-					// just got its sockets killed (e.g. iOS multi-interface
-					// path-change like vpn.wifi-lte-wifi.1.log). It logs
-					// its own decision; here we only log the proxy-side
-					// context (which conn, which slot).
-					cooldown := p.credPool.markSaturated(credSlot, creds, turnAddr)
-					log.Printf("proxy: [conn %d] TURN allocate quota error (486) on slot %d (cooldown %s)",
-						connIdx, credSlot, cooldown.Round(time.Second))
+					p.credPool.markSaturated(credSlot, creds, turnAddr)
+					log.Printf("proxy: [conn %d] TURN allocation refused (486) on slot %d", connIdx, credSlot)
 				} else if isAuthError(turnErr) {
 					p.credPool.invalidateEntry(credSlot, creds)
 					log.Printf("proxy: [conn %d] bootstrap auth error on slot %d, invalidated",
@@ -2718,9 +2542,6 @@ func (p *Proxy) runDTLSSession(sessCtx context.Context, linkID string, readyCh c
 				//   - release-before-get fix (commit fbf7abf) keeps the
 				//     reconnect cascade from spuriously logging "no slot
 				//     available" 30 times during handover.
-				//   - cred TTL increased to 4h default (commit 919f1e0)
-				//     means slots are far less likely to be on cooldown
-				//     when a kill arrives.
 				// The captcha-during-broken-tunnel issue is still real
 				// the recovery path now has more headroom: with TTL 4h
 				// the spare slot+1 is usually fresh, so 10/30 conns
@@ -3207,9 +3028,8 @@ func (p *Proxy) runWrapASession(sessCtx context.Context, linkID string, readyCh 
 				// Mirror runDTLSSession's error attribution so quota / auth
 				// failures land on the slot that actually carried the cred.
 				if isQuotaError(turnErr) {
-					cooldown := p.credPool.markSaturated(credSlot, creds, turnAddr)
-					log.Printf("proxy: [conn %d] WRAP-A TURN allocate quota error (486) on slot %d (cooldown %s)",
-						connIdx, credSlot, cooldown.Round(time.Second))
+					p.credPool.markSaturated(credSlot, creds, turnAddr)
+					log.Printf("proxy: [conn %d] WRAP-A TURN allocation refused (486) on slot %d", connIdx, credSlot)
 				} else if isAuthError(turnErr) {
 					p.credPool.invalidateEntry(credSlot, creds)
 					log.Printf("proxy: [conn %d] WRAP-A bootstrap auth error on slot %d, invalidated", connIdx, credSlot)
@@ -5320,9 +5140,8 @@ func (p *Proxy) runSRTPSession(sessCtx context.Context, linkID string, readyCh c
 		// Mirror runDTLSSession's error attribution so quota / auth
 		// failures land on the correct slot.
 		if isQuotaError(err) {
-			cooldown := p.credPool.markSaturated(credSlot, creds, turnAddr)
-			log.Printf("proxy: [conn %d] SRTP TURN allocate quota error (486) on slot %d (cooldown %s)",
-				connIdx, credSlot, cooldown.Round(time.Second))
+			p.credPool.markSaturated(credSlot, creds, turnAddr)
+			log.Printf("proxy: [conn %d] SRTP TURN allocation refused (486) on slot %d", connIdx, credSlot)
 		} else if isAuthError(err) {
 			p.credPool.invalidateEntry(credSlot, creds)
 			log.Printf("proxy: [conn %d] SRTP bootstrap auth error on slot %d, invalidated",

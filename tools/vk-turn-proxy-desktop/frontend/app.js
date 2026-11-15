@@ -5,6 +5,7 @@ import { createNotifications } from './notifications.js';
 import { initializeDropdowns } from './dropdown.js';
 import { createPowerParticles } from './particles.js';
 import { createRouting } from './routing.js';
+import { createSpeedTest } from './speed-test.js';
 
 const $ = (id) => document.getElementById(id);
 const powerParticles = createPowerParticles($('power-orbit'));
@@ -58,6 +59,8 @@ const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const t = (key, values) => translate(state.preferences.language, key, values);
 const routing = createRouting({ getState: () => state, backend, mutate, t, showError, refreshDropdowns });
 
+const speedTest = createSpeedTest({ backend, t, getState: () => state, refreshDropdowns, showError });
+
 function renderIcon(element, name) {
   if (element.dataset.renderedIcon === name) return;
   element.dataset.renderedIcon = name;
@@ -84,9 +87,9 @@ function showError(error, target) {
 
 function applyState(next) {
   if (!next) return;
-  const justConnected = next.connection.state === 'connected' &&
-    ['credentials', 'relay', 'handshake'].includes(state.connection.state);
-  if (next.connection.state !== 'connected') connectionFlash?.cancel();
+  const justConnected = next.connection.state === 'connected' && !next.connection.retryError &&
+    (Boolean(state.connection.retryError) || ['credentials', 'relay', 'handshake'].includes(state.connection.state));
+  if (next.connection.state !== 'connected' || next.connection.retryError) connectionFlash?.cancel();
   state = next;
   render();
   if (justConnected && page === 'connection' && !document.hidden && !reducedMotion.matches) {
@@ -179,14 +182,19 @@ function renderProfiles() {
 }
 
 function renderConnection() {
-  const phase = state.connection.state;
+  const retrying = Boolean(state.connection.retryError);
+  const waitingQuota = state.connection.retryError === '486';
+  const phase = retrying ? (waitingQuota ? 'waitingQuota' : 'reconnecting') : state.connection.state;
   const active = !['disconnected', 'failed'].includes(phase);
   const busy = active && phase !== 'connected';
   const selected = state.profiles.find((profile) => profile.id === state.activeID);
   if ($('connection-status').textContent !== t(phase)) $('connection-status').textContent = t(phase);
   let hint = `${phase}Hint`;
   if (phase === 'disconnected' && selected) hint = 'readyHint';
-  $('connection-hint').textContent = t(hint);
+  const retrySeconds = Math.max(0, Math.ceil((state.connection.retryAt - Date.now()) / 1000));
+  $('connection-hint').textContent = retrying
+    ? `${t(`retryError${state.connection.retryError}`)} ${retrySeconds ? t(waitingQuota ? 'quotaRetryHint' : 'retryHint', { seconds: retrySeconds }) : t(waitingQuota ? 'quotaChecking' : 'retryNow')}`
+    : t(hint);
   $('connect-label').textContent = t(
     active ? (phase === 'connected' ? 'disconnect' : 'cancelConnection') : 'connect',
   );
@@ -222,6 +230,7 @@ function render() {
   renderProfiles();
   renderConnection();
   routing.render();
+  speedTest.render();
   $('log-count').textContent = `${displayedLogs.length} ${t('lines')}`;
 }
 
@@ -416,6 +425,7 @@ async function poll() {
     const next = await backend().GetState();
     if (version === mutationVersion && !savingPreferences) applyState(next);
     if (page === 'logs') await refreshLogs();
+    await speedTest.poll();
   } catch (error) {
     showError(error);
   } finally {

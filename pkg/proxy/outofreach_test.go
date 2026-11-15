@@ -156,14 +156,17 @@ func TestASeatOutOfReachStaysCountedUntilItsAllocationCanHaveExpired(t *testing.
 		}
 		wallClock = clock
 	})
-	t.Run("no give-back is noted: a 486 behind a held seat benches the slot", func(t *testing.T) {
+	t.Run("a quota refusal keeps held seats counted without a cooldown", func(t *testing.T) {
 		shortSecond(t, 150*time.Millisecond, 400*time.Millisecond)
 		var mints atomic.Int32
 		cp, creds := fullSlot0(t, &mints)
 		thawAtCleanup(t, cp, 0, connsPerSlot-1)
 		cp.holdSeatUntil(0, creds, "", time.Now().Add(time.Minute))
-		if cd := cp.markSaturated(0, creds, ""); cd == 0 || !slotSaturated(cp, 0) {
-			t.Errorf("cooldown %s, saturated %v — a held seat is no give-back: the 486 behind it is not the relay's second", cd, slotSaturated(cp, 0))
+		if cd := cp.markSaturated(0, creds, ""); cd != 0 || slotSaturated(cp, 0) {
+			t.Errorf("quota refusal imposed cooldown %s, saturated %v", cd, slotSaturated(cp, 0))
+		}
+		if active, _, _ := leaseCounts(cp, 0); active != connsPerSlot {
+			t.Errorf("quota refusal changed held seats to %d", active)
 		}
 	})
 	t.Run("releaseLease: a hold outlasts the second, and both notes are taken", func(t *testing.T) {

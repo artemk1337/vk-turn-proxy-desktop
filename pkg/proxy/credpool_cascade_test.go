@@ -90,22 +90,17 @@ func TestStartReportOnAnIdlePoolDoesNotArmTheCascadeDetector(t *testing.T) {
 		}
 	}
 	cp.mu.Unlock()
-	if marked != 3 {
-		t.Fatalf("the real switch marked %d of the three live slots, want 3", marked)
+	if marked != 0 {
+		t.Fatalf("the real switch marked %d of the three live slots, want 0", marked)
 	}
 }
 
-// A start on a WARM cache marks disk-loaded slots "active-recent" (lastUsedAt
-// inside activeAllocationsWindow but past the load-cooldown) although nothing
-// is live — so the gate cannot be "did the event mark anything": it is "did
-// the event find sessions".
-//
-// Sabotage seen red: the gate written as len(markedSlots) > 0.
-func TestWarmCacheStartReportMarksSlotsButDoesNotArm(t *testing.T) {
+// A cached startup without live sessions neither marks quota nor arms cascade detection.
+func TestWarmCacheStartReportDoesNotMarkSlotsOrArm(t *testing.T) {
 	cp := cascadePool(t)
 	cp.mu.Lock()
 	for i := 0; i < 3; i++ {
-		cp.pool[i].lastUsedAt = time.Now().Add(-(credSaturationCooldown + 10*time.Second))
+		cp.pool[i].lastUsedAt = time.Now().Add(-time.Minute)
 	}
 	cp.mu.Unlock()
 	cp.MarkInUseSlotsForPathChange()
@@ -117,8 +112,8 @@ func TestWarmCacheStartReportMarksSlotsButDoesNotArm(t *testing.T) {
 		}
 	}
 	cp.mu.Unlock()
-	if marked != 3 {
-		t.Fatalf("the warm-cache start marked %d slots active-recent, want 3 — the fixture no longer models the case", marked)
+	if marked != 0 {
+		t.Fatalf("the warm-cache start imposed quota marks on %d slots, want 0", marked)
 	}
 	if armedAt, _ := cp.cascadeState(); !armedAt.IsZero() {
 		t.Fatalf("a start that marked active-recent slots armed the detector (lastPathEventAt %s) — no session was live", armedAt)

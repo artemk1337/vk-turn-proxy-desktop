@@ -120,8 +120,8 @@ func TestLateGrowerFetchDoesNotOverwriteARefilledSlot(t *testing.T) {
 	if e.creds == nil || !strings.Contains(e.creds.Username, ":conn-3") || e.active != 10 {
 		t.Fatalf("slot 3 after the late fetch: creds=%v active=%d — the new connections' slot was overwritten", e.creds, e.active)
 	}
-	if e.fetching || !e.cooldownUntil.IsZero() {
-		t.Fatalf("slot 3 was touched by the late fetch: fetching=%v cooldown=%v", e.fetching, e.cooldownUntil)
+	if e.fetching {
+		t.Fatalf("slot 3 was touched by the late fetch: fetching=%v", e.fetching)
 	}
 	placed := l.slotsNamed("late-3")
 	if len(placed) != 1 || placed[0] == 3 {
@@ -174,8 +174,8 @@ func TestLateFetchFailureLeavesTheNewOwnerAlone(t *testing.T) {
 	if ok := <-done; ok {
 		t.Fatal("tryFill answered true for a failed fetch")
 	}
-	if e := l.entry(3); !e.cooldownUntil.IsZero() || e.fetching || e.active != 10 {
-		t.Fatalf("slot 3 after the failed late fetch: cooldown=%v fetching=%v active=%d — touched", e.cooldownUntil, e.fetching, e.active)
+	if e := l.entry(3); e.fetching || e.active != 10 {
+		t.Fatalf("slot 3 after the failed late fetch: fetching=%v active=%d — touched", e.fetching, e.active)
 	}
 
 	l2 := newLateFetchPool(t)
@@ -193,8 +193,8 @@ func TestLateFetchFailureLeavesTheNewOwnerAlone(t *testing.T) {
 	if r.err != nil || r.slot != 0 {
 		t.Fatalf("get after a failed late fetch: slot %d err %v — want the fallback seat on the refilled slot 0", r.slot, r.err)
 	}
-	if e := l2.entry(0); e.active != 5 || !e.cooldownUntil.IsZero() {
-		t.Fatalf("slot 0: active=%d cooldown=%v — want 5 seats and no cooldown from a fetch that was not its own", e.active, e.cooldownUntil)
+	if e := l2.entry(0); e.active != 5 {
+		t.Fatalf("slot 0: active=%d — want 5 seats after the unrelated fetch", e.active)
 	}
 }
 
@@ -311,8 +311,8 @@ func TestLateFetchInCookieModeIsNotRelocated(t *testing.T) {
 	if got := l2.slotsNamed("cookie-A"); len(got) != 1 || got[0] != 0 {
 		t.Fatalf("relay A's credential sits in slots %v, want slot 0 alone", got)
 	}
-	if e := l2.entry(0); e.active != 10 || !e.cooldownUntil.IsZero() {
-		t.Fatalf("slot 0: active=%d cooldown=%v — want the ten seats untouched and no cooldown", e.active, e.cooldownUntil)
+	if e := l2.entry(0); e.active != 10 {
+		t.Fatalf("slot 0: active=%d — want ten seats untouched", e.active)
 	}
 
 	// The window the Username check cannot see: after the reset a NEW fetch

@@ -198,7 +198,6 @@ func TestCookieModeARelayDroppedFromTheListKeepsItsLeasesSeats(t *testing.T) {
 	}
 	// The leases end: R1's clock moves (not R3's), and slot 0 takes the free
 	// entry R3 at the release that frees the last seat.
-	before := time.Now()
 	for i, c := range held {
 		cp.Release(0, c, "")
 		if i < len(held)-1 {
@@ -209,13 +208,9 @@ func TestCookieModeARelayDroppedFromTheListKeepsItsLeasesSeats(t *testing.T) {
 	}
 	cp.cp.mu.Lock()
 	a0 := append([]string(nil), cp.cp.pool[0].addrs...)
-	usedR1, usedR3 := cp.cp.relayUsedAt[r1], cp.cp.relayUsedAt[r3]
 	cp.cp.mu.Unlock()
 	if strings.Join(a0, ",") != r3 {
 		t.Fatalf("after the last release slot 0 dials %v — want the list's free entry %s", a0, r3)
-	}
-	if usedR1.Before(before) || !usedR3.IsZero() {
-		t.Fatalf("the quota clock after the leases on R1 ended: R1 %v, R3 %v — want R1 stamped now, R3 untouched", usedR1, usedR3)
 	}
 }
 
@@ -403,12 +398,7 @@ func TestCookieModeAShrunkListHandsTheFreedEntryOn(t *testing.T) {
 	if c, err := cookieCredForSlot(context.Background(), 0, []string{r2}, nil, nil); err != nil || c.Address != r2 {
 		t.Fatalf("the minter for slot 0 under [R2] with nothing held: %+v %v — want R2 (slot 1's reservation is beyond the list)", c, err)
 	}
-	// And the pool hands R2 out — on slot 0 — once R2's quota clock (slot 1's
-	// lease on it ended a moment ago: the relay's cooldown) has run out.
-	cp.cp.mu.Lock()
-	cp.cp.relayUsedAt[r2] = time.Now().Add(-2 * credSaturationCooldown)
-	cp.cp.applyRelayQuarantineLocked(0)
-	cp.cp.mu.Unlock()
+	// R2 is reusable immediately after the previous lease is released.
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		addr, creds, slot, err := cp.Acquire(0)

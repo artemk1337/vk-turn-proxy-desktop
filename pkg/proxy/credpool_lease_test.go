@@ -245,8 +245,11 @@ func TestARefusalNamesTheCredentialItWasFor(t *testing.T) {
 	}
 
 	// The arms that must go THROUGH.
-	if cd := cp.markSaturated(0, b, ""); cd <= 0 {
-		t.Fatal("a 486 for the credential the slot holds marked nothing")
+	if cd := cp.markSaturated(0, b, ""); cd != 0 {
+		t.Fatalf("a quota refusal imposed local cooldown %s", cd)
+	}
+	if refusals, pause := cp.quotaSnapshot(); refusals != 3 || pause != 0 {
+		t.Fatalf("current credential refusal = %d refusals, pause %s", refusals, pause)
 	}
 	cp.invalidateEntry(0, b)
 	if _, _, now := leaseCounts(cp, 0); now != "" {

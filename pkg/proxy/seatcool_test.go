@@ -27,11 +27,11 @@ import (
 )
 
 // shortSecond shrinks the relay's second for a test.
-func shortSecond(t *testing.T, cool, grace time.Duration) {
+func shortSecond(t *testing.T, cool, _ time.Duration) {
 	t.Helper()
-	c, g := seatCoolFor, seatLagGrace
-	seatCoolFor, seatLagGrace = cool, grace
-	t.Cleanup(func() { seatCoolFor, seatLagGrace = c, g })
+	previous := seatCoolFor
+	seatCoolFor = cool
+	t.Cleanup(func() { seatCoolFor = previous })
 }
 
 func slotSaturated(cp *credPool, slot int) bool {
@@ -135,134 +135,29 @@ func TestASeatGivenBackStaysCountedForTheRelaysSecond(t *testing.T) {
 	})
 }
 
-// C, on the pool alone: a 486 right behind a seat this side gave back on that
-// credential is the relay's second — nothing is benched, the breaker's freshness
-// test does not see it, the total does, and whoever parks is woken. The controls:
-// the same 486 with no give-back behind it, and one after the grace, bench the
-// slot as they always did.
-func TestA486BehindOurOwnGiveBackIsTheRelaysSecond(t *testing.T) {
-	shortSecond(t, 150*time.Millisecond, 400*time.Millisecond)
-	t.Run("the relay's second: not benched, counted, a wake", func(t *testing.T) {
-		var mints atomic.Int32
-		cp, creds := fullSlot0(t, &mints)
-		cp.mu.Lock()
-		cp.noteGiveBackLocked(0, creds, time.Now()) // the note alone — no seat cooling here, so that the wake below can only be this rule's own
-		cp.mu.Unlock()
-		wake := cp.slotAvailableChannel()
-		if cd := cp.markSaturated(0, creds, ""); cd != 0 {
-			t.Errorf("cooldown %s, want 0: the slot was benched over the relay's own second", cd)
-		}
-		if slotSaturated(cp, 0) {
-			t.Error("slot 0 is marked VK-saturated")
-		}
-		cp.mu.Lock()
-		total, lag := cp.quota.refusals, cp.seat.lagRefusals
-		cp.mu.Unlock()
-		if total != 1 || lag != 1 {
-			t.Errorf("refusals in the total %d, read as the relay's second %d, want 1 and 1", total, lag)
-		}
-		select {
-		case <-wake:
-		case <-time.After(2 * time.Second):
-			t.Error("no wake when the second was over: whoever parked on the refusal sleeps out its retry delay")
-		}
-	})
-	t.Run("the control: no give-back behind it — benched", func(t *testing.T) {
-		var mints atomic.Int32
-		cp, creds := fullSlot0(t, &mints)
-		if cd := cp.markSaturated(0, creds, ""); cd != vkActiveAllocationsCooldown || !slotSaturated(cp, 0) {
-			t.Errorf("cooldown %s, saturated %v — a 486 nothing of ours explains must bench the slot (%s)", cd, slotSaturated(cp, 0), vkActiveAllocationsCooldown)
-		}
-	})
-	t.Run("the control: a give-back older than the grace — benched", func(t *testing.T) {
-		var mints atomic.Int32
-		cp, creds := fullSlot0(t, &mints)
-		cp.releaseGivenBack(0, creds, "", time.Now().Add(-401*time.Millisecond))
-		if cd := cp.markSaturated(0, creds, ""); cd == 0 || !slotSaturated(cp, 0) {
-			t.Errorf("cooldown %s, saturated %v — a give-back 401ms old (grace 400ms) explains no refusal", cd, slotSaturated(cp, 0))
-		}
-	})
-	t.Run("another identity's give-back on the same slot number explains nothing", func(t *testing.T) {
-		var mints atomic.Int32
-		cp, creds := fullSlot0(t, &mints)
-		other := &TURNCreds{Username: fmt.Sprintf("%d:other", time.Now().Add(8*time.Hour).Unix()), Password: "p"}
-		cp.mu.Lock()
-		cp.noteGiveBackLocked(0, other, time.Now())
-		cp.mu.Unlock()
-		if cd := cp.markSaturated(0, creds, ""); cd == 0 {
-			t.Error("a give-back of ANOTHER identity was taken for this one's: the quota is per identity")
-		}
-	})
-	t.Run("the same identity's give-back on another slot explains nothing", func(t *testing.T) {
-		var mints atomic.Int32
-		cp, creds := fullSlot0(t, &mints)
-		cp.mu.Lock()
-		cp.noteGiveBackLocked(1, creds, time.Now())
-		cp.mu.Unlock()
-		if cd := cp.markSaturated(0, creds, ""); cd == 0 {
-			t.Error("a give-back on ANOTHER slot was taken for this one's")
-		}
-	})
-	t.Run("the latest give-back stands, old notes are dropped, and a note is aged by the wall clock", func(t *testing.T) {
-		var mints atomic.Int32
-		cp, creds := fullSlot0(t, &mints)
-		gone := &TURNCreds{Username: fmt.Sprintf("%d:gone", time.Now().Add(8*time.Hour).Unix()), Password: "p"}
-		now := time.Now()
-		cp.mu.Lock()
-		cp.noteGiveBackLocked(3, gone, now.Add(-2*time.Minute))
-		cp.noteGiveBackLocked(0, creds, now)
-		cp.noteGiveBackLocked(0, creds, now.Add(-300*time.Millisecond)) // an older one, heard of later — a leg left behind
-		_, kept := cp.gaveBackAt[leaseKeyOf(3, gone)]
-		at := cp.gaveBackAt[leaseKeyOf(0, creds)]
-		cp.mu.Unlock()
-		if kept {
-			t.Error("a note two minutes old is still kept: one entry per credential ever given back, for ever")
-		}
-		if !at.Equal(now) {
-			t.Errorf("the note reads %s behind the latest give-back, want that one", now.Sub(at))
-		}
-		cp.mu.Lock()
-		delete(cp.gaveBackAt, leaseKeyOf(0, creds))
-		cp.mu.Unlock()
-		cp.releaseGivenBack(0, creds, "", time.Now()) // a time WITH a monotonic reading, as csqtt's lease hands in
-		cp.mu.Lock()
-		at, noted := cp.gaveBackAt[leaseKeyOf(0, creds)]
-		cp.mu.Unlock()
-		if !noted {
-			t.Fatal("releaseGivenBack noted no give-back: a 486 behind it explains nothing to the pool")
-		}
-		if at != at.Round(0) {
-			t.Error("the note carries a monotonic reading: a freeze of the process would stop the relay's second, which runs in real time")
-		}
-	})
-	t.Run("the breaker's freshness test does not see it", func(t *testing.T) {
-		var mints atomic.Int32
-		cp := leasePool(t, &mints)
-		fresh := &TURNCreds{Username: fmt.Sprintf("%d:fresh", time.Now().Add(8*time.Hour).Unix()), Password: "p", Address: leaseTestRelay}
-		cp.mu.Lock()
-		cp.pool[0] = credPoolEntry{addr: leaseTestRelay, creds: fresh, ts: time.Now()} // a fresh credential, nothing ever accepted on it
-		seatHolders(cp, 0, 2)
-		cp.mu.Unlock()
-		for i := 0; i < quotaRefusalTrip+1; i++ {
-			cp.releaseGivenBack(0, fresh, "", time.Now())
-			cp.markSaturated(0, fresh, "")
-		}
-		if _, paused := cp.quotaSnapshot(); paused != 0 {
-			t.Errorf("minting paused for %s: the relay's second was read as the relay refusing fresh credentials", paused)
-		}
-	})
+// Quota refusals do not change the accounting for recently released seats.
+func TestQuotaRefusalsDoNotImposeCooldownAfterGiveBack(t *testing.T) {
+	shortSecond(t, 150*time.Millisecond, 0)
+	var mints atomic.Int32
+	cp, creds := fullSlot0(t, &mints)
+	cp.releaseGivenBack(0, creds, "", time.Now())
+	if delay := cp.markSaturated(0, creds, ""); delay != 0 || slotSaturated(cp, 0) {
+		t.Fatalf("quota refusal imposed delay %s, saturated %v", delay, slotSaturated(cp, 0))
+	}
+	if refusals, pause := cp.quotaSnapshot(); refusals != 1 || pause != 0 {
+		t.Fatalf("refusal statistics = %d, pause %s", refusals, pause)
+	}
+	if active, _, _ := leaseCounts(cp, 0); active != connsPerSlot {
+		t.Fatalf("quota refusal changed active seats to %d", active)
+	}
 }
 
 // The numbers as shipped, against the measurement: the relay let a seat go
-// 1 000 ms behind its deallocate and not 990 ms behind it. The pool's second has
-// to outlast that with a margin; the grace has to outlast the pool's second by
-// the round trips of the Allocate that drew the 486.
+// 1 000 ms behind its deallocate and not 990 ms behind it. Seat accounting
+// outlasts that observed release delay by a small margin.
 func TestThePoolsSecondOutlastsTheRelays(t *testing.T) {
 	if seatCoolFor < 1100*time.Millisecond || seatCoolFor > 2*time.Second {
 		t.Errorf("seatCoolFor = %s, want 1.1–2 s: the relay holds a deallocated seat for 1.0 s (refused at 990 ms, accepted at 1 000 ms — 2026-09-21)", seatCoolFor)
-	}
-	if seatLagGrace < seatCoolFor+500*time.Millisecond {
-		t.Errorf("seatLagGrace = %s, want at least seatCoolFor (%s) + 500 ms", seatLagGrace, seatCoolFor)
 	}
 }
 
@@ -659,7 +554,7 @@ type tenOnOneIdentity struct {
 	kills map[int]context.CancelFunc
 }
 
-func newTenOnOneIdentity(t *testing.T, lag time.Duration, overUDP bool) *tenOnOneIdentity {
+func newTenOnOneIdentity(t *testing.T, lag time.Duration, overUDP bool, onSessionEnd ...func(error)) *tenOnOneIdentity {
 	t.Helper()
 	user := fmt.Sprintf("%d:stand", time.Now().Add(8*time.Hour).Unix())
 	s := &tenOnOneIdentity{relay: newLaggingRelay(t, connsPerSlot, lag, func(u string) bool { return u == user }, overUDP), kills: map[int]context.CancelFunc{}}
@@ -679,7 +574,11 @@ func newTenOnOneIdentity(t *testing.T, lag time.Duration, overUDP bool) *tenOnOn
 		s.kills[connIdx] = cancel
 		s.mu.Unlock()
 		signaled := true
-		return p.runSRTPSession(sctx, "", nil, &signaled, connIdx)
+		err := p.runSRTPSession(sctx, "", nil, &signaled, connIdx)
+		if len(onSessionEnd) > 0 {
+			onSessionEnd[0](err)
+		}
+		return err
 	}
 	s.p = p
 	var wg sync.WaitGroup
@@ -756,29 +655,50 @@ var relayTransports = []struct {
 	udp  bool
 }{{"UDP", true}, {"TCP — the production transport", false}}
 
-// …and when the margin IS missed — here the pool's second is shorter than the
-// relay's — the 486 that follows is read for what it is: the slot is not benched,
-// and the connection is back as soon as the relay lets the seat go. (With the
-// slot benched there is no way back on this stand: one identity is all it has.)
-func TestA486InsideTheRelaysSecondDoesNotBenchTheSlot(t *testing.T) {
+// A real server quota refusal selects the one-minute retry interval without
+// changing credential eligibility or bypassing held-seat accounting.
+func TestQuotaRefusalUsesMinuteRetryWithoutBenchingCredential(t *testing.T) {
 	shortSecond(t, 50*time.Millisecond, 3*time.Second)
 	for _, tr := range relayTransports {
 		t.Run(tr.name, func(t *testing.T) {
-			s := newTenOnOneIdentity(t, 600*time.Millisecond, tr.udp)
+			sessionErrors := make(chan error, 8)
+			s := newTenOnOneIdentity(t, 3*time.Second, tr.udp, func(err error) {
+				select {
+				case sessionErrors <- err:
+				default:
+				}
+			})
 			s.kill(6)
-			waitUntil(t, "the re-dial to be refused inside the relay's second", 5*time.Second, func() bool { return s.relay.refused.Load() >= 1 })
-			back := s.backWithin(15 * time.Second)
-			if slotSaturated(s.p.credPool, 0) {
-				t.Error("slot 0 is benched as VK-saturated over a 486 inside the relay's own second")
+			var quotaErr error
+			timeout := time.NewTimer(8 * time.Second)
+			defer timeout.Stop()
+			for quotaErr == nil {
+				select {
+				case err := <-sessionErrors:
+					if err != nil && strings.Contains(err.Error(), "486") {
+						quotaErr = err
+					}
+				case <-timeout.C:
+					t.Fatal("no actual TURN quota refusal observed")
+				}
 			}
-			if !back {
-				t.Error("the connection was not back on the identity within 15 s")
+			if delay := reconnectDelayForError(quotaErr, 1); delay != time.Minute {
+				t.Fatalf("actual quota refusal retry delay = %s", delay)
 			}
-			s.p.credPool.mu.Lock()
-			lag := s.p.credPool.seat.lagRefusals
-			s.p.credPool.mu.Unlock()
-			if lag < 1 {
-				t.Errorf("%d refusal(s) read as the relay's second, want at least 1", lag)
+			refused := s.relay.refused.Load()
+			for range 5 {
+				s.p.credPool.broadcastSlotAvailable()
+				time.Sleep(20 * time.Millisecond)
+			}
+			if after := s.relay.refused.Load(); after != refused {
+				t.Fatalf("pool broadcasts caused another quota request: before %d, after %d", refused, after)
+			}
+			cp := s.p.credPool
+			cp.mu.Lock()
+			fresh, active := cp.isFreshLocked(0), cp.pool[0].active
+			cp.mu.Unlock()
+			if !fresh || active > connsPerSlot || slotSaturated(cp, 0) {
+				t.Fatalf("quota refusal state: fresh %v, active %d, saturated %v", fresh, active, slotSaturated(cp, 0))
 			}
 		})
 	}

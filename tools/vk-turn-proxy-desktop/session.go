@@ -109,6 +109,7 @@ func (a *App) Connect() (State, error) {
 	if err != nil {
 		return a.snapshot(), err
 	}
+	a.cancelSpeedTestLocked()
 	command, finish, err := startPlatformCommand(a.backend, args, writer, session.stopFile)
 	if err != nil {
 		reader.Close()
@@ -119,6 +120,7 @@ func (a *App) Connect() (State, error) {
 	started = true
 	a.session = session
 	a.connection = "credentials"
+	a.retryError, a.retryAt = "", 0
 	a.traffic = trafficSample{}
 	a.lastError = ""
 	a.logs.Lines = []string{}
@@ -140,8 +142,10 @@ func (a *App) waitBackend(command *exec.Cmd, finish func(), reader *os.File, dir
 	<-readDone
 	os.RemoveAll(directory)
 	a.mu.Lock()
+	a.cancelSpeedTestLocked()
 	a.session = nil
 	a.connection = "disconnected"
+	a.retryError, a.retryAt = "", 0
 	a.traffic = trafficSample{}
 	if err != nil {
 		a.connection = "failed"
@@ -161,7 +165,9 @@ func (a *App) Disconnect() (State, error) {
 	if err := writePrivate(a.session.stopFile, nil); err != nil {
 		return a.snapshot(), errors.New("Could not request disconnect.")
 	}
+	a.cancelSpeedTestLocked()
 	a.connection = "disconnecting"
+	a.retryError, a.retryAt = "", 0
 	a.traffic = trafficSample{}
 	return a.snapshot(), nil
 }
@@ -219,6 +225,10 @@ func connectionRank(state string) int {
 func (a *App) appendLog(line string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if strings.HasPrefix(line, retryPrefix) {
+		a.applyRetry(line, time.Now())
+		return
+	}
 	if strings.HasPrefix(line, trafficPrefix) {
 		if tx, rx, ok := parseTraffic(line); ok && a.connection == "connected" {
 			a.traffic.update(tx, rx, time.Now())

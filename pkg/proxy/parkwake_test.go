@@ -95,11 +95,10 @@ func TestEveryParkCarriesTheChannel(t *testing.T) {
 			cp.pool[0], cp.pool[1], cp.pool[2] = full(0), full(1), full(2)
 		}},
 		{"no slot", "no slot available", func(cp *credPool) {
-			// Every slot is empty and on its per-relay cooldown: nothing to hand
-			// out, nothing ready or in flight (so the cap does not fire first),
-			// and no slot to mint into.
+			// Every slot is being fetched, with demand above the pool capacity.
+			cp.coldStartTarget = len(cp.pool) + 1
 			for i := range cp.pool {
-				cp.pool[i].cooldownUntil = time.Now().Add(time.Hour)
+				cp.pool[i].fetching = true
 			}
 		}},
 	}
@@ -157,8 +156,8 @@ func TestWakeChannelForPrefersTheParkErrorsChannel(t *testing.T) {
 
 // The retry waits use the helper, not the pool's channel directly — pinned by
 // spelling, because the gap is a matter of WHEN the channel is read and no
-// unit test can drive runConnection's select. Three sites: the bootstrap
-// wait on a saturated pool, the dormancy, the 2–7 s retry delay. And every
+// unit test can drive runConnection's select. The connection retry wait
+// reads the park error's captured channel. Every
 // park in creds.go captures the channel BEFORE it releases the lock.
 // Sabotage seen red: one retry site back on p.credPool.slotAvailableChannel();
 // a park capturing the channel after Unlock.
@@ -168,8 +167,8 @@ func TestRetryWaitsTakeTheParkErrorsChannel(t *testing.T) {
 		t.Fatal(err)
 	}
 	code := string(src)
-	if n := strings.Count(code, "p.wakeChannelFor(err)"); n != 3 {
-		t.Errorf("proxy.go has %d retry sites on p.wakeChannelFor(err), want 3 (the bootstrap wait, the dormancy, the retry delay)", n)
+	if n := strings.Count(code, "p.wakeChannelFor(err)"); n != 1 {
+		t.Errorf("proxy.go has %d retry sites on p.wakeChannelFor(err), want 1 (the connection retry delay)", n)
 	}
 	if n := strings.Count(code, "p.credPool.slotAvailableChannel()"); n != 1 {
 		t.Errorf("proxy.go reads p.credPool.slotAvailableChannel() %d times, want 1 — inside wakeChannelFor only; a retry site that reads it directly reopens the gap", n)
@@ -180,8 +179,8 @@ func TestRetryWaitsTakeTheParkErrorsChannel(t *testing.T) {
 	}
 	c := string(creds)
 	parks := regexp.MustCompile(`&poolParkError\{`).FindAllStringIndex(c, -1)
-	if len(parks) != 8 {
-		t.Fatalf("creds.go constructs poolParkError %d times, want 8 (the pause, the relay-refusal breaker's mint pause, the cold-start cap, no slot, a credential issued again with all its previous holders still out, a fresh credential naming only relays marked unreachable — into its slot, or into an empty one —, a fresh credential pending on its relay's quota clock)", len(parks))
+	if len(parks) != 6 {
+		t.Fatalf("creds.go constructs poolParkError %d times, want 6 (path settle, cold-start capacity, no slot, held previous leases, and two unreachable-relay paths)", len(parks))
 	}
 	for _, m := range parks {
 		window := c[max(0, m[0]-400):m[0]]

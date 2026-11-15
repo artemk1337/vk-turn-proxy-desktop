@@ -1,13 +1,6 @@
 package proxy
 
-// The pool after a path change (2026-09-06, build 360): the marking saturates
-// every in-use slot for 10 min, the restarted connections come back at once,
-// and the pool must MINT for them — a fresh fetch is a new VK identity with
-// its own quota — instead of parking them behind creds whose allocations are
-// dead. Two things stood in the way: the cold-start cap counted saturated
-// slots as "ready" (Phase 1 refuses them — count by the predicate you hand
-// out by), and Phase 2 would never fetch into a saturated slot even when no
-// connection was bound to it any more.
+// Cached credentials remain usable when the physical network changes.
 
 import (
 	"context"
@@ -18,10 +11,7 @@ import (
 	"time"
 )
 
-// pathChangedPool is a 12-slot pool the way an LTE→Wi-Fi switch leaves it:
-// slots 0/4/5 hold fresh creds just MARKED saturated (their sessions gone,
-// active 0), the rest are disk-loaded and pending, and slot 3 is empty or
-// pending as the caller says.
+// pathChangedPool provides valid cached credentials with an optional empty slot.
 func pathChangedPool(t *testing.T, slot3Empty bool) (*credPool, *atomic.Int32) {
 	t.Helper()
 	var mints atomic.Int32
@@ -44,59 +34,57 @@ func pathChangedPool(t *testing.T, slot3Empty bool) (*credPool, *atomic.Int32) {
 			Address: "203.0.113.11:19302", Addresses: []string{"203.0.113.11:19302"}}
 		switch i {
 		case 0, 4, 5:
-			cp.pool[i] = credPoolEntry{addr: creds.Address, creds: creds, ts: now.Add(-3 * time.Minute), relayHist: relayHist{saturatedUntil: now.Add(10 * time.Minute)}}
+			cp.pool[i] = credPoolEntry{addr: creds.Address, creds: creds, ts: now.Add(-3 * time.Minute)}
 		case 3:
 			if slot3Empty {
 				cp.pool[i] = credPoolEntry{}
 			} else {
-				cp.pool[i] = credPoolEntry{addr: creds.Address, creds: creds, ts: now.Add(-5 * time.Minute), relayHist: relayHist{availableAt: now.Add(5 * time.Minute)}}
+				cp.pool[i] = credPoolEntry{addr: creds.Address, creds: creds, ts: now.Add(-5 * time.Minute)}
 			}
 		default:
-			cp.pool[i] = credPoolEntry{addr: creds.Address, creds: creds, ts: now.Add(-5 * time.Minute), relayHist: relayHist{availableAt: now.Add(5 * time.Minute)}}
+			cp.pool[i] = credPoolEntry{addr: creds.Address, creds: creds, ts: now.Add(-5 * time.Minute)}
 		}
 	}
 	cp.mu.Unlock()
 	return cp, &mints
 }
 
-// With an empty slot in the pool, a connection that finds every usable slot
-// saturated MINTS into it instead of parking: the cap counts the slots Phase
-// 1 would hand out (none), not the saturated ones. Sabotage seen red: the
-// cap counting fresh-but-saturated slots as ready (countFreshLocked) — the
-// acquire parks on "cold-start cap (3 ready+inflight >= 3 target)".
-func TestPathChangeMintsInsteadOfParkingBehindSaturatedSlots(t *testing.T) {
+func TestPathChangeReusesCachedCredentialsBeforeMinting(t *testing.T) {
 	cp, mints := pathChangedPool(t, true)
-	addr, creds, slot, err := cp.get(0, false)
-	if err != nil {
-		t.Fatalf("acquire after the path change: %v — thirty connections would wait out a 10-minute cooldown here", err)
-	}
-	if mints.Load() != 1 || slot != 3 || addr == "" || creds == nil || !strings.HasSuffix(creds.Username, "minted-3") {
-		t.Fatalf("mints %d slot %d creds %v — want one fresh mint into the empty slot 3", mints.Load(), slot, creds)
+	cp.MarkInUseSlotsForPathChange()
+	cp.mu.Lock()
+	cp.pauseAcquireUntil = time.Time{}
+	cp.mu.Unlock()
+	_, creds, slot, err := cp.get(0, false)
+	if err != nil || creds == nil || slot != 0 || !strings.HasSuffix(creds.Username, "loaded-0") || mints.Load() != 0 {
+		t.Fatalf("path change retry = slot %d, credentials %v, mints %d, error %v", slot, creds != nil, mints.Load(), err)
 	}
 }
 
-// With NO empty slot (every slot saturated or pending), the pool replaces a
-// saturated slot that no connection is bound to — its sessions were restarted
-// and its allocations are dead at VK — and still refuses to replace one with
-// connections on it. Sabotage seen red: the second pass dropped from Phase 2
-// ("no slot available" with three idle saturated slots in the pool).
-func TestPathChangeReplacesAnIdleSaturatedSlotWhenNothingIsEmpty(t *testing.T) {
+func TestPathChangeKeepsCredentialsWithActiveSeats(t *testing.T) {
 	cp, mints := pathChangedPool(t, false)
-	_, creds, slot, err := cp.get(0, false)
-	if err != nil {
-		t.Fatalf("acquire with every slot saturated or pending: %v — the idle saturated slots are free to reuse", err)
-	}
-	if mints.Load() != 1 || (slot != 0 && slot != 4 && slot != 5) || creds == nil || !strings.HasPrefix(creds.Username[strings.Index(creds.Username, ":")+1:], "minted") {
-		t.Fatalf("mints %d slot %d creds %v — want one fresh mint into an idle saturated slot", mints.Load(), slot, creds)
-	}
-	// The minted slot fills up, and conns are still bound to the other two
-	// saturated slots: those must stay — a park, not a replaced cred.
 	cp.mu.Lock()
-	for _, i := range []int{0, 4, 5} {
-		cp.pool[i].active = 10
+	var names []string
+	for i := range cp.pool {
+		names = append(names, cp.pool[i].creds.Username)
+		seatHolders(cp, i, connsPerSlot)
 	}
 	cp.mu.Unlock()
-	if _, _, _, err := cp.get(11, false); err == nil || !strings.Contains(err.Error(), "no slot available") {
-		t.Fatalf("acquire with the remaining saturated slots in use: %v — want a park, not a replaced cred under ten live conns", err)
+	cp.MarkInUseSlotsForPathChange()
+	cp.mu.Lock()
+	cp.pauseAcquireUntil = time.Time{}
+	cp.mu.Unlock()
+	if _, _, _, err := cp.get(0, false); err == nil {
+		t.Fatal("full active credential pool admitted another seat")
+	}
+	cp.mu.Lock()
+	defer cp.mu.Unlock()
+	for i := range cp.pool {
+		if cp.pool[i].creds.Username != names[i] || cp.pool[i].active != connsPerSlot {
+			t.Fatalf("active credential in slot %d was replaced", i)
+		}
+	}
+	if mints.Load() != 0 {
+		t.Fatal("path change minted over active credentials")
 	}
 }

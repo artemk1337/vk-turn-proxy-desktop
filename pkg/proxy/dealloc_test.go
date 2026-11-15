@@ -698,8 +698,8 @@ func TestConfirmedTCPShutdownReusesTheCacheOnTheNextConnection(t *testing.T) {
 		p.releaseLease(slot, creds, addr, &gave)
 		cancel()
 		p.Stop()
-		if cached := readReleasedCache(t, path); cached.ReleasedAt == 0 {
-			t.Fatalf("connection %d did not persist the confirmed release", connection)
+		if cached := readReleasedCache(t, path); len(cached.Creds) == 0 {
+			t.Fatalf("connection %d did not persist reusable credentials", connection)
 		}
 	}
 }

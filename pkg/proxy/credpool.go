@@ -136,7 +136,7 @@ func (p *CredPool) standardFetch(cfg CredPoolConfig) func(bool, int) (string, *T
 		var creds *TURNCreds
 		if cookieAuthEnabled.Load() {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			c, cerr := cookieCredForSlot(ctx, slot, p.cp.overrideServers(), p.cp.heldRelaysExcept(slot), p.cp.quarantinedRelays()) // the pool's list, resolved (#105)
+			c, cerr := cookieCredForSlot(ctx, slot, p.cp.overrideServers(), p.cp.heldRelaysExcept(slot), nil) // the pool's list, resolved (#105)
 			cancel()
 			if cerr != nil {
 				if errors.Is(cerr, ErrCookieRejected) {
@@ -212,11 +212,8 @@ func (p *CredPool) ReleaseHeld(slot int, creds *TURNCreds, addr string, until ti
 	p.cp.holdSeat(slot, creds, addr, until, why)
 }
 
-// MarkSaturated records a 486 (allocation quota reached) from relay addr on
-// creds, the credential the caller leased from slot, and returns the cooldown
-// applied — on THAT relay (relayhist.go); zero when the slot no longer holds
-// that credential, or when the refusal is the relay's second behind a seat
-// this side has just given back (nothing is marked either way — seatcool.go).
+// MarkSaturated records an allocation quota error. The return value remains
+// zero for API compatibility. Callers control retries and their backoff.
 func (p *CredPool) MarkSaturated(slot int, creds *TURNCreds, addr string) time.Duration {
 	return p.cp.markSaturated(slot, creds, addr)
 }
@@ -385,21 +382,6 @@ func (p *CredPool) Grow(ready <-chan struct{}) {
 	p.cp.growLoop(ctx, p.pace, nil)
 }
 
-// growLoop is THE grower: the one fill loop of a credPool, run by both of its
-// owners — Proxy.growCredPool (the native transports, after the bootstrap)
-// and CredPool.Grow (csqtt's standalone pool, after `ready`). It returns when
-// ctx ends.
-//
-//   - Fills with allowCaptchaBlock=false: a background fetch that meets a
-//     captcha records a cooldown on its slot instead of blocking on user input.
-//   - hold reports "a captcha is waiting for the user". While it answers true
-//     a tick adds no VK pressure — no fill, the slow interval: another fetch
-//     could invalidate the captcha session being solved. nil = the owner has
-//     no captcha UI and is never held.
-//   - Fast poll (pace.fast) while the cold-start target is unmet, slow poll
-//     (pace.slow) when every slot is full or on cooldown, a random
-//     pace.staggerMin…staggerMax pause between maintenance fills so creds do
-//     not end up with synchronised expiry timestamps.
 func (cp *credPool) growLoop(ctx context.Context, pace growPace, hold func() bool) {
 	// Cold-start fast-fill target: enough slots to host NumConns at VK's
 	// quota (10 conns/slot, see connsPerSlot in creds.go) — ceil(NumConns/10)
@@ -443,7 +425,6 @@ func (cp *credPool) growLoop(ctx context.Context, pace growPace, hold func() boo
 
 		slot := cp.pickSlotToFill()
 		if slot < 0 {
-			// Everything filled or on cooldown — idle poll.
 			interval = pace.slow
 			continue
 		}
@@ -489,8 +470,6 @@ func (cp *credPool) growLoop(ctx context.Context, pace growPace, hold func() boo
 				log.Printf("credpool-grow: maintenance fill skipped/failed, next attempt in %v", interval.Round(time.Second))
 			}
 		} else {
-			// Below the target → keep filling fast; tryFill's per-slot cooldown
-			// prevents hammering a dead slot.
 			interval = pace.fast
 		}
 	}

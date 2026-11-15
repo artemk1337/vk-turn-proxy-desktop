@@ -180,8 +180,8 @@ func TestAHerdOfInstantFailuresIsBoundedByTheFloor(t *testing.T) {
 		cp.pool[i] = credPoolEntry{addr: leaseTestRelay, ts: time.Now(), creds: &TURNCreds{
 			Username: fmt.Sprintf("%d:herd-%d", time.Now().Add(8*time.Hour).Unix(), i), Password: "p",
 			Address: leaseTestRelay, Addresses: []string{leaseTestRelay}}}
-		if i < slots { // the connections' own slots, benched by the path change
-			cp.pool[i].saturatedUntil = time.Now().Add(10 * time.Minute)
+		if i < slots { // the connections' own slots are still being fetched
+			cp.pool[i] = credPoolEntry{fetching: true}
 		}
 	}
 	cp.mu.Unlock()
@@ -305,8 +305,13 @@ func TestASessionThatCameUpEndsTheStreakWhateverItReturned(t *testing.T) {
 			if g := starts[2].Sub(starts[1]); g < 450*time.Millisecond || g > 900*time.Millisecond {
 				t.Fatalf("the gap after the SECOND failure = %s, want ~500 ms — the fixture is not exercising the floor", g.Round(time.Millisecond))
 			}
-			if g := starts[3].Sub(starts[2]); g > 200*time.Millisecond {
-				t.Fatalf("the attempt after the session that came up started %s later, want at once — that iteration was no network failure", g.Round(time.Millisecond))
+			gap := starts[3].Sub(starts[2])
+			if c.after == nil {
+				if gap < time.Second || gap > 2200*time.Millisecond {
+					t.Fatalf("session ended without error: retry gap %s, want 1–2 s jitter", gap)
+				}
+			} else if gap > 200*time.Millisecond {
+				t.Fatalf("a recovered session retained a network retry floor: %s", gap)
 			}
 			if g := starts[4].Sub(starts[3]); g < 200*time.Millisecond || g > 700*time.Millisecond {
 				t.Fatalf("the wake after the first failure FOLLOWING a session that came up was held %s, want ~250 ms (a new streak, k = 1) — the streak of the two failures before that session was kept (k = 3 holds 1 s)", g.Round(time.Millisecond))
@@ -315,7 +320,7 @@ func TestASessionThatCameUpEndsTheStreakWhateverItReturned(t *testing.T) {
 	}
 }
 
-// The wiring, by property: both retry waits go through waitRetry with the
+// The wiring, by property: the connection retry wait goes through waitRetry with the
 // connection's floor and its classification; the streak ends on the
 // connection's own session and on a restart by request, never on a signal
 // wake; three transports stamp the session-up where their handshake over the
@@ -330,11 +335,11 @@ func TestTheRetryWaitsConsultTheFloor(t *testing.T) {
 	}
 	code := stripComments(string(src))
 	rc := goFuncBody(t, "proxy.go", "func (p *Proxy) runConnection(")
-	if n := strings.Count(rc, "p.waitRetry(sessCtx, "); n != 2 {
-		t.Errorf("runConnection: %d waits through waitRetry, want 2 (the dormancy, the retry delay)", n)
+	if n := strings.Count(rc, "p.waitRetry(sessCtx, "); n != 1 {
+		t.Errorf("runConnection: %d waits through waitRetry, want 1 (the jittered retry delay)", n)
 	}
-	if n := len(regexp.MustCompile(`p\.waitRetry\(sessCtx, connIdx, \w+, slotCh, &floor, floored\)`).FindAllString(rc, -1)); n != 2 {
-		t.Errorf("runConnection: %d waits carry the connection's floor and its classification, want 2", n)
+	if n := len(regexp.MustCompile(`p\.waitRetry\(sessCtx, connIdx, \w+, slotCh, &floor, floored\)`).FindAllString(rc, -1)); n != 1 {
+		t.Errorf("runConnection: %d waits carry the connection's floor and its classification, want 1", n)
 	}
 	if strings.Contains(rc, "case <-slotCh") {
 		t.Error("runConnection selects on the slot-available channel directly — a wake that bypasses the floor")
@@ -342,8 +347,8 @@ func TestTheRetryWaitsConsultTheFloor(t *testing.T) {
 	if n := strings.Count(rc, "floor.reset()"); n != 2 {
 		t.Errorf("runConnection: %d floor resets, want 2 — the connection's own session, a restart by request", n)
 	}
-	if i := strings.Index(rc, "case retryWakeSignal:"); i < 0 || strings.Contains(rc[i:], "floor.reset()") {
-		t.Error("runConnection: a signal wake resets the floor's streak (or the dormancy's signal arm is gone) — the streak ends on evidence that the network works, never on a wake")
+	if i := strings.Index(rc, "p.waitRetry(sessCtx,"); i >= 0 && strings.Contains(rc[i:], "floor.reset()") {
+		t.Error("runConnection: a signal wake resets the floor streak")
 	}
 	if est, errBranch := strings.Index(rc, "established := p.ups.since(connIdx, start)"), strings.Index(rc, "if err != nil {"); est < 0 || errBranch < 0 || est > errBranch {
 		t.Error("runConnection asks whether a session came up inside the error branch (or not at all) — a session that came up and returned nil would keep the streak")

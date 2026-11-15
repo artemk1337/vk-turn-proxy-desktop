@@ -97,6 +97,8 @@
                 <span data-icon="plus"></span>
               </button>
             </div>
+            <button id="speed-open" class="text-button speed-open" data-i18n="speedTitle">Speed test</button>
+            <p id="speed-summary" class="speed-summary" hidden></p>
           </div>
           <div class="account-section">
             <div class="account-identity">
@@ -238,6 +240,26 @@
         </footer>
       </main>
     </div>
+
+    <dialog id="speed-dialog" aria-labelledby="speed-title">
+      <header class="dialog-heading">
+        <h2 id="speed-title" data-i18n="speedTitle">Speed test</h2>
+        <button type="button" class="icon-button close-dialog" data-i18n-aria="close" aria-label="Close"><span data-icon="close"></span></button>
+      </header>
+      <div class="dialog-body">
+        <label class="field"><span data-i18n="speedServer">Test server</span><select id="speed-server"></select></label>
+        <p class="dialog-description" data-i18n="speedRouteHint">Uses current system routing. With split tunneling, the test server may connect directly.</p>
+        <p id="speed-context" class="speed-summary"></p>
+        <dl class="speed-results">
+          <div><dt data-i18n="speedLatency">Latency</dt><dd id="speed-latency">—</dd></div>
+          <div><dt data-i18n="speedDownload">Download</dt><dd id="speed-download">—</dd></div>
+          <div><dt data-i18n="speedUpload">Upload</dt><dd id="speed-upload">—</dd></div>
+        </dl>
+        <p id="speed-phase" class="speed-summary" role="status" aria-live="polite"></p>
+        <p id="speed-error" class="form-error" role="alert" hidden></p>
+      </div>
+      <footer class="dialog-footer"><button id="speed-start" type="button" class="primary" data-i18n="speedStart">Start test</button></footer>
+    </dialog>
 
     <dialog id="profile-dialog" aria-labelledby="profile-title">
       <form id="profile-form">

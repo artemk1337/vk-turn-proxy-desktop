@@ -40,10 +40,8 @@ func allocatedTotal(cp *credPool) int {
 	return n
 }
 
-// The stand's shape on the pool alone, through both production paths that
-// refill a slot under a lease, and the consequence the stand named: the
-// refilled credential has no success of its own, so two fresh 486s on it
-// are the relay refusing and the breaker must trip.
+// A late allocation answer cannot certify a replacement credential. Quota
+// failures remain counted without imposing a local credential pause.
 func TestALateSuccessOfTheOldCredentialDoesNotCertifyTheNew(t *testing.T) {
 	paths := []struct {
 		name  string
@@ -74,8 +72,8 @@ func TestALateSuccessOfTheOldCredentialDoesNotCertifyTheNew(t *testing.T) {
 			}
 			cp.markSaturated(slot, fresh, "") // B's own 486s: fresh, and nothing ever succeeded on B
 			cp.markSaturated(slot, fresh, "")
-			if refusals, paused := cp.quotaSnapshot(); refusals != 2 || paused <= 0 {
-				t.Fatalf("after two fresh 486s on the refilled credential: (%d, paused %s), want (2, > 0) — the breaker took the new credential for an accepted one", refusals, paused)
+			if refusals, paused := cp.quotaSnapshot(); refusals != 2 || paused != 0 {
+				t.Fatalf("refilled credential quota refusals = %d, local pause = %s — want 2 refusals and no local pause", refusals, paused)
 			}
 			cp.noteAllocated(slot, fresh) // B's own success is B's
 			if a := allocatedOn(cp, slot); a != 1 {

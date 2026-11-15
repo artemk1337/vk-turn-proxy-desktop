@@ -100,21 +100,21 @@ type vkCredentials struct {
 // minted 0 creds. Two findings, both harness-verified from our own IP (see
 // 29.05.2026/proxy-turn-vk-android-1.2.2/go_client iptest_test.go MINT TEST):
 //
-//   1. Dropped 3 app_ids (52461373 VK_WEB_VKVIDEO, 52649896 VK_MVK_VKVIDEO,
-//      51781872 VK_ID_AUTH): they return error_code 3 "Unknown method passed"
-//      for calls.getAnonymousToken (method not exposed to those apps) — never
-//      produced a cred, and the wasted attempts amplified VK's per-IP captcha
-//      escalation (checkbox→slider→BOT).
+//  1. Dropped 3 app_ids (52461373 VK_WEB_VKVIDEO, 52649896 VK_MVK_VKVIDEO,
+//     51781872 VK_ID_AUTH): they return error_code 3 "Unknown method passed"
+//     for calls.getAnonymousToken (method not exposed to those apps) — never
+//     produced a cred, and the wasted attempts amplified VK's per-IP captcha
+//     escalation (checkbox→slider→BOT).
 //
-//   2. Replaced our stale secrets. Our old secrets for 6287487
-//      (QbYic1K3lEV5kTGiqlq2) and 7879029 (aR5NKGmm03GYrCiNKsaw) SOLVE the
-//      captcha fine but then VK returns error_code 10 "Internal server error"
-//      on the post-captcha getAnonymousToken MINT — the token1 they yield is
-//      mint-invalid. amurcanov's secret for 6287487 (MuAxFaKDYDOICzGnEOhp) and
-//      their 2nd app 8202606 BOTH mint a call token cleanly from the same
-//      IP/method (verified 2026-05-31: MINT OK 2/2). So the method is NOT
-//      sunset — our secrets were stale. Matched amurcanov's exact pair.
-//      (7879029 dropped: no known-good secret; re-add if one is found.)
+//  2. Replaced our stale secrets. Our old secrets for 6287487
+//     (QbYic1K3lEV5kTGiqlq2) and 7879029 (aR5NKGmm03GYrCiNKsaw) SOLVE the
+//     captcha fine but then VK returns error_code 10 "Internal server error"
+//     on the post-captcha getAnonymousToken MINT — the token1 they yield is
+//     mint-invalid. amurcanov's secret for 6287487 (MuAxFaKDYDOICzGnEOhp) and
+//     their 2nd app 8202606 BOTH mint a call token cleanly from the same
+//     IP/method (verified 2026-05-31: MINT OK 2/2). So the method is NOT
+//     sunset — our secrets were stale. Matched amurcanov's exact pair.
+//     (7879029 dropped: no known-good secret; re-add if one is found.)
 var vkCredentialsList = []vkCredentials{
 	{ClientID: "6287487", ClientSecret: "MuAxFaKDYDOICzGnEOhp"}, // VK_WEB — amurcanov's current working secret
 	{ClientID: "8202606", ClientSecret: "lMRsTiMCyPnp5vfoldmn"}, // amurcanov's 2nd stable app_id
@@ -536,14 +536,14 @@ func getVKCredsWithClientID(linkID string, vc vkCredentials, captchaSolver Captc
 	}
 
 	// Step 1.5: call getCallPreview (warms up the session, as in reference impl)
-	previewData := fmt.Sprintf("vk_join_link=" + vkCallJoinBase + "%s&access_token=%s&device_id=%s", linkID, token1, deviceID)
+	previewData := fmt.Sprintf("vk_join_link="+vkCallJoinBase+"%s&access_token=%s&device_id=%s", linkID, token1, deviceID)
 	_, _ = doRequest(previewData, fmt.Sprintf("https://%s/method/calls.getCallPreview?v=5.282&client_id=%s", vkAPIHost(), vc.ClientID))
 
 	// Step 2: get anonymous call token (with captcha retry)
 	var token2 string
 	var resp map[string]interface{}
 	var err error
-	step2Data := fmt.Sprintf("vk_join_link=" + vkCallJoinBase + "%s&name=%s&access_token=%s&device_id=%s", linkID, escapedName, token1, deviceID)
+	step2Data := fmt.Sprintf("vk_join_link="+vkCallJoinBase+"%s&name=%s&access_token=%s&device_id=%s", linkID, escapedName, token1, deviceID)
 
 	// buildCaptchaRetry builds the step2 body carrying a solved captcha. VK's
 	// new error_code-14 format (2026-06-24) OMITS captcha_sid — it ships only
@@ -552,10 +552,10 @@ func getVKCredsWithClientID(linkID string, vc vkCredentials, captchaSolver Captc
 	// samosvalishe/cacggghp fix); an empty captcha_sid in the body confuses VK.
 	buildCaptchaRetry := func(sid, successToken string, ts, attempt float64) string {
 		if sid == "" {
-			return fmt.Sprintf("vk_join_link=" + vkCallJoinBase + "%s&name=%s&access_token=%s&success_token=%s&device_id=%s",
+			return fmt.Sprintf("vk_join_link="+vkCallJoinBase+"%s&name=%s&access_token=%s&success_token=%s&device_id=%s",
 				linkID, escapedName, token1, neturl.QueryEscape(successToken), deviceID)
 		}
-		return fmt.Sprintf("vk_join_link=" + vkCallJoinBase + "%s&name=%s&access_token=%s&captcha_key=&captcha_sid=%s&is_sound_captcha=0&success_token=%s&captcha_ts=%.3f&captcha_attempt=%d&device_id=%s",
+		return fmt.Sprintf("vk_join_link="+vkCallJoinBase+"%s&name=%s&access_token=%s&captcha_key=&captcha_sid=%s&is_sound_captcha=0&success_token=%s&captcha_ts=%.3f&captcha_attempt=%d&device_id=%s",
 			linkID, escapedName, token1, sid, neturl.QueryEscape(successToken), ts, int(attempt), deviceID)
 	}
 
@@ -641,7 +641,7 @@ func getVKCredsWithClientID(linkID string, vc vkCredentials, captchaSolver Captc
 				}
 
 				if powTry < maxPoWRetries {
-					freshData := fmt.Sprintf("vk_join_link=" + vkCallJoinBase + "%s&name=%s&access_token=%s&device_id=%s", linkID, escapedName, token1, deviceID)
+					freshData := fmt.Sprintf("vk_join_link="+vkCallJoinBase+"%s&name=%s&access_token=%s&device_id=%s", linkID, escapedName, token1, deviceID)
 					freshResp, freshErr := doRequest(freshData, step2URL)
 					if freshErr != nil {
 						log.Printf("vk: failed to get fresh captcha for PoW retry: %v", freshErr)
@@ -692,7 +692,7 @@ func getVKCredsWithClientID(linkID string, vc vkCredentials, captchaSolver Captc
 			// anti-bot tooling (sandbox iframe pure fetch check) but it's
 			// for analytics instrumentation, not bot blocking. The actual
 			// issue is purely session_token consumption.
-			freshData := fmt.Sprintf("vk_join_link=" + vkCallJoinBase + "%s&name=%s&access_token=%s&device_id=%s", linkID, escapedName, token1, deviceID)
+			freshData := fmt.Sprintf("vk_join_link="+vkCallJoinBase+"%s&name=%s&access_token=%s&device_id=%s", linkID, escapedName, token1, deviceID)
 			if freshResp, freshErr := doRequest(freshData, step2URL); freshErr == nil {
 				if fSID, fImg, fTs, fAttempt := extractCaptcha(freshResp); fImg != "" {
 					log.Printf("vk: fetched untouched captcha for caller (was sid=%s, now sid=%s)", currentSID, fSID)
@@ -838,20 +838,12 @@ func getVKCredsWithClientID(linkID string, vc vkCredentials, captchaSolver Captc
 //   global "wipe when any entry is 10 min old". Entries refresh independently.
 
 // credPoolEntry is one slot in the pool — either filled (creds != nil)
-// or empty. Each slot tracks its own freshness and cooldown independently.
+// or empty. Credential validity and live leases are tracked independently.
 type credPoolEntry struct {
 	addr  string
 	addrs []string // the relays this credential may be dialled on — VK's own, or the override's (relayhealth.go); addr is the first VK one, for the cache and the logs
 	creds *TURNCreds
 	ts    time.Time // when this slot was last filled; zero for empty slots
-
-	// cooldownUntil: if set and in the future, the slot is temporarily
-	// "forbidden from fetching" because a previous fetch attempt failed
-	// (typically CaptchaRequiredError). get() and the background grower
-	// skip fetch for this slot until cooldownUntil passes — they fall
-	// back to any fresh slot instead. This prevents one conn's persistent
-	// captcha failures from pounding VK on every reconnect.
-	cooldownUntil time.Time
 
 	// fetching: a goroutine is currently doing a VK fetch to populate
 	// this slot. Other goroutines (get / background grower) skip the
@@ -888,32 +880,12 @@ type credPoolEntry struct {
 	// the relay's refusal, with some its quota.
 	allocated int
 
-	// relayHist is the credential's history whose relay is not known — a
-	// cache file from before `used_on`, a seed, a mark that named no relay:
-	// availableAt (VK's clock, set by loadFromDisk — the cred is KEPT, not
-	// dropped, while VK's lingering allocations time out: a fresh fetch
-	// through PoW can take 10-30 min on a hostile day), lastUsedAt (the last
-	// moment `active` fell to 0; saveToDisk writes "now" for a slot in use),
-	// saturatedUntil (a 486 or a path change's smart-pause) and its timer.
-	// The history of a relay the credential was dialled on lives in `on`
-	// (relayhist.go): the quota is per (identity, relay), and so are the
-	// seats, the clock and the marks.
+	// Per-relay lease history is separate from credential validity.
 	relayHist
 	on map[string]*relayHist
 }
 
-// credCacheVersion is the on-disk JSON schema version. Loaders that find
-// a different version log a warning and skip — caller falls through to
-// fresh fetch as if no cache existed.
-//
-// Bumped to 2 on 2026-05-01: per-entry LastUsedAt added so loadFromDisk
-// can decide saturation cooldown per-slot instead of per-file. The
-// previous file-level cooldown was overly conservative — it skipped the
-// whole cache (including the "+1 reserve" slot, which by design sits
-// at active=0 and has zero VK-side allocations) whenever a recent
-// session had touched ANY slot. Per-entry check loads the reserve and
-// any other never-used / long-since-released slots while still
-// skipping the genuinely saturated ones.
+// credCacheVersion retains compatibility with existing credential files.
 const credCacheVersion = 2
 
 // credCacheMode names the kind of identity a pool mints and its cache file
@@ -941,118 +913,9 @@ func credCacheModeNow() string {
 	return credCacheModeAnon
 }
 
-// credSaturationCooldown is the minimum gap from a slot's last release
-// before we trust it on load. VK allows 10 concurrent TURN allocations
-// per cred set with ~600s server-side lifetime. When a session ends,
-// pion's Refresh(lifetime=0) over UDP is best-effort — VK frequently
-// keeps the previous session's allocations live until they expire on
-// their own. Loading a cred whose lastUsedAt is within that window
-// would 486 every bootstrap allocation, and the extension can't
-// recover before iOS kills it on startTunnel timeout.
-//
-// Slots with lastUsedAt == 0 (background-grower-filled but never used
-// by any conn — typically the "+1 reserve" slot) are safe regardless
-// of file age: VK has no allocations on them.
-//
-// vpn.wifi.9.log on 2026-05-01: reconnect 6 minutes after disconnect
-// entered an infinite preparing → connecting → disconnecting loop
-// because the only persisted slot (slot 0) was reused from cache and
-// VK still had its 10 lingering allocations from the prior session.
-const credSaturationCooldown = 10 * time.Minute
-
-// credPeriodicSaveInterval keeps the on-disk file's per-slot
-// lastUsedAt within ~1 minute of reality even when no fetch / invalidate
-// events fire (steady state, no pool churn). Without this, an extension
-// that ran cleanly for hours then got jetsam'd would leave the disk
-// reflecting only the initial-startup save, with lastUsedAt frozen at
-// "fetch time" — far enough in the past that the per-entry cooldown
-// would mistakenly mark all slots as safe even though their
-// allocations were still live until the kill moment.
+// credPeriodicSaveInterval bounds persistence lag for changed credentials.
 const credPeriodicSaveInterval = 60 * time.Second
 
-// vkSaturationCooldown is the SHORT cooldown applied when a slot's last
-// in-use moment was long ago (no recent active allocations). The 486
-// is most likely from VK-side residual session state which clears
-// quickly, so a brief wait suffices. 3m chosen 2026-05-06 (commit
-// f458389) over the original 10m to fix vpn.wifi.2.log's 14-min 0-conn
-// window where parked conns slept past actual recovery time, and
-// paired with markSaturated's broadcastSlotAvailable on expiry to wake
-// them within milliseconds of cooldown end.
-const vkSaturationCooldown = 3 * time.Minute
-
-// vkActiveAllocationsCooldown is the LONG cooldown applied when 486
-// hits a slot whose allocations were active very recently (lastUsedAt
-// within `activeAllocationsWindow` ago). In that case the 486 isn't
-// from cleared-up ghosts, it's because the slot's previous TURN
-// allocations are STILL OCCUPYING VK's quota for their full ~600s
-// lifetime. We must wait for them to actually expire server-side
-// before retrying — otherwise we churn through the bootstrap retry
-// budget hitting 486 every time.
-//
-// Demonstrated 2026-05-08 in vpn.wifi-lte-wifi.1.log: WiFi → LTE → office
-// WiFi transition. 30 conns successfully allocated on LTE at
-// 18:01:20-26; iOS killed those sockets ~13s later when the office
-// WiFi appeared; bootstrap retried at 18:07:25-45 within the 10m
-// window and got 486 again because VK still held the LTE-side
-// allocations until ~18:11:30. Watchdog #1 fire was wasted; only
-// watchdog #2 at 18:12:45 succeeded. With this cooldown the wasted
-// retry burst would have been suppressed and watchdog #1 would have
-// noticed slots still saturated, sparing the bootstrap budget.
-//
-// 11m = VK's worst-case 600s lifetime + ~1m safety so the retry burst
-// after expiry doesn't race the last allocation's actual cleanup
-// (token bucket, CGNAT mapping, etc).
-const vkActiveAllocationsCooldown = 11 * time.Minute
-
-// activeAllocationsWindow is the lastUsedAt threshold under which a 486
-// is interpreted as "VK still holds our active allocations" (and dually,
-// also the smart-pause threshold for marking a slot as having potentially
-// live VK quota on path change).
-//
-// VK's TURN allocation lifetime is 600s from the LAST refresh, and pion
-// refreshes every ~5min during a conn's life. So the latest allocation
-// expiry timestamp is:
-//
-//   T_last_refresh + 600s, where T_last_refresh ∈ [T_conn_die - 5m, T_conn_die]
-//
-// Worst case (refresh fired just before death): T_conn_die + 600s = +10m.
-// Our `lastUsedAt` is set when conn count drops to 0 (≈ T_conn_die for
-// last conn in slot). So VK can hold a live allocation up to 10m past
-// lastUsedAt in the worst case.
-//
-// Originally this window was 10m — exactly matching VK's lifetime with
-// ZERO safety margin. Symptom (vpn.over24h.log 2026-05-13 15:26 outage):
-// slots 3/4/5 had `lastUsedAt > 10m ago` so smart-pause skipped them at
-// event 1, but pion's last refresh on those slots had been just before
-// their lastUsedAt → VK allocations still alive ~1-2 min after our 10m
-// threshold. 26 conns retried Allocate on slots 3/4/5 after smart-pause
-// blocked 0/1/2, hit 486 (quota still occupied by previous-session
-// allocations VK hadn't expired yet), markSaturated fired with reason
-// "active-now, conns still hold slot". Cascade: all 12 slots saturated
-// → 10-minute outage until cooldowns elapsed.
-//
-// 12m = 10m worst-case allocation lifetime + 2m buffer for VK processing
-// + slot of conservatism. Cost: smart-pause may mark 1-2 extra slots per
-// path change covering the 10-12m window. With pool=12 and typically
-// only 3-6 slots active at any moment, this is acceptable.
-const activeAllocationsWindow = 12 * time.Minute
-
-// pauseAcquireAfterPathEvent is how long credPool.get() returns "paused"
-// after each wgPathChanged call. iOS fires PathMonitor events in pairs
-// on every physical interface swap (unsatisfied old-iface + satisfied
-// new-iface) typically 130-365ms apart. Without this pause, conns dying
-// from kernel error after the first event acquire fresh slots in the
-// gap, then the second event's smart-pause catches those newly-active
-// slots — burning 1 extra slot per transition (vpn.wifi-lte.0.log
-// 2026-05-12 15:44:36-37: pool 6→2 instead of expected 6→3 on a single
-// WiFi→LTE; slot 6 caught at the cellular-satisfied event because
-// conns 27/22/23 had already migrated to it during the 356ms gap).
-//
-// 500ms covers typical iOS dual-event gap with margin. Pause is
-// refreshed (extended) on each smart-pause call so longer event
-// sequences keep the pool quiet through the whole transition. Conn
-// retry loops see "credpool: paused for path-change settle" and back
-// off, returning to acquire when the pause naturally expires.
 const pauseAcquireAfterPathEvent = 500 * time.Millisecond
 
 // cascadeDetectionWindow + cascadePauseDuration implement adaptive pause-
@@ -1069,16 +932,17 @@ const pauseAcquireAfterPathEvent = 500 * time.Millisecond
 // too. Result: pool wiped after 3-4 events.
 //
 // Observed multi-event cascades and their gaps:
-//   2026-05-13 20:01-20:02 — gaps 46s, 27s
-//   2026-05-14 19:43-19:45 — gaps 51s, 36s
-//   2026-05-14 14:30      — gaps ~3s + ~3s (with iface=other in middle,
-//                            handled by Variant B's 5s extended pause)
+//
+//	2026-05-13 20:01-20:02 — gaps 46s, 27s
+//	2026-05-14 19:43-19:45 — gaps 51s, 36s
+//	2026-05-14 14:30      — gaps ~3s + ~3s (with iface=other in middle,
+//	                         handled by Variant B's 5s extended pause)
 //
 // On each path event we check `gap = now - lastPathEventAt`:
 //
-//   gap < 500ms                → iOS dual-event, normal pause refresh (500ms)
-//   500ms ≤ gap < 90s           → CASCADE detected, set pause to 30s
-//   gap ≥ 90s                  → isolated event, normal pause (500ms)
+//	gap < 500ms                → iOS dual-event, normal pause refresh (500ms)
+//	500ms ≤ gap < 90s           → CASCADE detected, set pause to 30s
+//	gap ≥ 90s                  → isolated event, normal pause (500ms)
 //
 // 🚨 ARMING (2026-09-07): lastPathEventAt is recorded only by an event that
 // found LIVE sessions (a slot with active > 0) or that itself detected a
@@ -1106,20 +970,17 @@ const cascadePauseDuration = 30 * time.Second
 // credCacheFile is the persisted pool cache. Each pool has one file containing
 // TURN session credentials with approximately eight hours of validity.
 // The caller must store it in a protected application directory.
-// Runtime state (saturatedUntil, cooldownUntil, active count, fetching)
+// Runtime state (active count and fetching)
 // is intentionally excluded — those are per-process and shouldn't survive
 // across launches.
 type credCacheFile struct {
-	// ReleasedAt records a joined shutdown with every Allocate attempt released
-	// by a confirmed Refresh(0). Unix nanoseconds, absent in older caches.
+	// Legacy release metadata is decoded for compatibility and ignored.
 	ReleasedAt int64            `json:"released_at,omitempty"`
 	Version    int              `json:"version"`
 	SavedAt    int64            `json:"saved_at"`
 	Mode       string           `json:"mode,omitempty"` // credCacheModeAnon / credCacheModeCookie; absent in files from before it
 	Creds      []credCacheEntry `json:"creds"`
-	// RelayUsedAt (cookie mode, since 2026-10-20): relay → the last moment a
-	// lease on it ended (Unix seconds) — the relay's quota clock, which is the
-	// RELAY's under one okcdn user id, not any slot's. Absent in older files.
+	// Legacy quota history is decoded for compatibility and ignored.
 	RelayUsedAt map[string]int64 `json:"relay_used_at,omitempty"`
 }
 
@@ -1131,24 +992,9 @@ type credCacheEntry struct {
 	Addresses []string `json:"addresses,omitempty"`
 	Username  string   `json:"username"`
 	Password  string   `json:"password"`
-	// LastUsedAt is the most recent moment a conn was holding a TURN
-	// allocation against this cred (Unix seconds, 0 = never used in
-	// this session). Drives the per-entry saturation-cooldown check
-	// in loadFromDisk. saveToDisk substitutes time.Now() for slots
-	// that are currently active so a kill mid-session still records
-	// "this slot was alive" rather than the last release time.
-	LastUsedAt int64 `json:"last_used_at,omitempty"`
-	// UsedOn (anonymous mode, since 2026-10-31): relay → the last moment a
-	// seat of this credential on THAT relay was held (Unix seconds; "now"
-	// for a relay with seats at the save) — the clock is per (identity,
-	// relay), so the history is kept per relay (relayhist.go). The key "*"
-	// is the history whose relay is not known (a file from before this
-	// field, seats the record could not place): it applies to EVERY relay
-	// and survives a save beside the relays' own (the user's review of 461:
-	// a legacy clock with nine minutes left was dropped by the first save
-	// that wrote a relay of its own). A file without the field has the one
-	// last_used_at, read as every relay's.
-	UsedOn map[string]int64 `json:"used_on,omitempty"`
+	// Legacy usage timestamps are ignored when restoring credentials.
+	LastUsedAt int64            `json:"last_used_at,omitempty"`
+	UsedOn     map[string]int64 `json:"used_on,omitempty"`
 }
 
 // credPool holds up to `size` independent TURN credential slots, one per
@@ -1157,9 +1003,6 @@ type credCacheEntry struct {
 //   - Lazy-first get(): callers prefer ANY fresh entry over blocking on a
 //     VK fetch. Only when the pool has no fresh entry at all will a
 //     caller invoke fetch inline.
-//   - Per-slot cooldown: a failed fetch (captcha) puts that slot in
-//     cooldown so subsequent get()s skip fetch and go straight to
-//     fallback. After the cooldown expires the slot is eligible again.
 //   - Background grower: a separate goroutine (see Proxy.growCredPool)
 //     periodically picks an empty/stale slot and tries to fill it
 //     without blocking any caller. That's how the pool grows to `size`
@@ -1174,12 +1017,11 @@ type credPool struct {
 	onRelayMarked func(addr string, stamp uint64) // told, outside the lock, of every relay newly marked UNREACHABLE with the proxy's hand-out stamp at the mark — the proxy ends the sessions handed that relay before it (relaymarkend.go)
 	handSeq       uint64                          // the hand-out counter, moved UNDER THE LOCK at every address handed out (get → stampHandOutLocked); a mark reads it there and the notice carries it (relaymarkend.go)
 	handStamp     map[int]uint64                  // the stamp of each connection's latest hand-out, by connIdx (recordHandOut reads it)
-	mu       sync.Mutex
-	pool     []credPoolEntry // indexed by slot index; grown lazily up to size
-	nextGen  uint64          // last claim stamp handed out — see credPoolEntry.gen
-	size     int             // pool capacity, derived from NumConns via poolSizeForNumConns
-	cooldown time.Duration   // post-failure skip-fetch window (default 5m)
-	mode     string          // credCacheModeAnon / credCacheModeCookie — fixed at creation; what the cache file is stamped with and checked against
+	mu            sync.Mutex
+	pool          []credPoolEntry // indexed by slot index; grown lazily up to size
+	nextGen       uint64          // last claim stamp handed out — see credPoolEntry.gen
+	size          int             // pool capacity, derived from NumConns via poolSizeForNumConns
+	mode          string          // credCacheModeAnon / credCacheModeCookie — fixed at creation; what the cache file is stamped with and checked against
 
 	// The relay health (relayhealth.go, credpool_relay.go): the standing of
 	// every relay address by host:port, the user's override setting, each
@@ -1192,22 +1034,11 @@ type credPool struct {
 	deadMintPause time.Duration
 	healthTimer   *time.Timer
 	healthWakeAt  time.Time
-	// relayUsedAt (cookie mode): relay → the last moment a lease on it ended;
-	// the quota clock of the RELAY — see relayQuarantineUntilLocked.
-	relayUsedAt map[string]time.Time
 	// the override list's re-resolution (credpool_relay.go reresolveOverride)
 	overrideResolving  bool
 	overrideResolvedAt time.Time
 
-	inheritedUntil time.Time     // inherited allocations must expire before a clean snapshot
-	cacheRestarted bool          // a consumed release proof requires dirty snapshots until shutdown
-	saverDone      chan struct{} // closed after the periodic saver's final snapshot
-
-	// cacheReleasedAt is latched after the native sessions join. Late fetch
-	// saves preserve it because fetching credentials creates no allocations.
-	// Protected by saveMu.
-	cacheReleasedAt time.Time
-	pendingRelease  bool // a previous proof must be invalidated before acquiring
+	saverDone chan struct{} // closed after the periodic saver's final snapshot
 
 	// holders is the pool's record of the leases still out — get() has handed
 	// them out, release() has not yet taken them back — by WHAT each was taken
@@ -1357,17 +1188,15 @@ type credPool struct {
 	// runs after unlock so close-while-locked stalls are impossible.
 	slotAvailableCh chan struct{}
 
-	// quota is the relay-refusal breaker — see quotabreaker.go.
+	// quota counts actual relay refusals — see quotabreaker.go.
 	quota quotaBreaker
 
 	// The pool's own context: what outlives a moment (a held seat's release —
 	// seatcool.go) stops with it. nil in a test's literal pool.
 	ctx context.Context
 
-	// The relay's second — seatcool.go: when a seat was last given back on
-	// (slot, credential), and what that second has cost and saved. Under cp.mu.
-	gaveBackAt map[leaseKey]time.Time
-	seat       seatStats
+	// Deferred seat releases are tracked independently from retry timing.
+	seat seatStats
 }
 
 // leaseKey names what a lease was taken on: the slot and the credential
@@ -1385,81 +1214,6 @@ func leaseKeyOf(slot int, creds *TURNCreds) leaseKey {
 	return leaseKey{slot: slot, username: creds.Username}
 }
 
-// poolSizeForNumConns derives the cred pool size from the configured
-// number of tunnel connections.
-//
-// VK enforces a STRICT allocation quota of 10 simultaneous TURN
-// allocations per cred set. This is not a refilling token bucket — once
-// 10 allocations are in flight on a cred, the 11th attempt gets 486
-// Allocation Quota Reached and stays 486 until one of the 10 active
-// allocations is released (TTL expiry, network change invalidating the
-// 5-tuple, or explicit close).
-//
-// Empirical confirmation in vpn.wifi.19.1.log:
-//   - conns 0-9 used cred 0, established 23:42:39-41
-//   - conns 11-15 came from cred 1 (a separate cred set fetched by the
-//     pool's background grower 10+ minutes later); none of them succeeded
-//     by retrying on cred 0, even after dozens of 486 attempts
-//   - conn 10 also eventually landed on cred 1
-//
-// Earlier vpn.wifi.18.log showed the same pattern (conn 11+ used cred 3
-// from background grower, not cred 0), but I misread the cred-suffix in
-// the log line and concluded VK had a refilling per-cred bucket. That
-// was wrong. The pool's previous formula (3 + (n-1)/20, committed in
-// 260d8bc on this same misreading) is reverted here.
-//
-// Formula: ceil(n * 4 / 10) = ceil(n * 2 / 5). One cred per 10 conns
-// (matches VK's hard quota) plus a 300% spare buffer for cascade
-// recovery during network-path changes — survives up to 3 back-to-back
-// transitions within one 10m30s smart-pause window.
-//
-// History — formula bumped twice in two days:
-//
-//   * 2026-05-10 build 70: ceil(n * 1.5 / 10) → ceil(n * 2.5 / 10).
-//     The previous +50% buffer (3 working + 2 spare for typical N=30)
-//     was empirically insufficient for rapid-flap saturation cascades.
-//
-//   * 2026-05-10 build 73: ceil(n * 2.5 / 10) → ceil(n * 4 / 10).
-//     Build 72's smart-pause + pool=8 worked perfectly for SINGLE
-//     transitions (vpn.wifi.3.log: WiFi→LTE recovery 7.5s, 0 quota
-//     errors). But back-to-back transitions saturate disjoint slot
-//     sets — vpn.wifi-lte-wifi.1.log on 2026-05-10 23:03 showed
-//     LTE→WiFi (5 slots saturated) coming 6.5 min after WiFi→LTE
-//     (5 slots saturated 10m30s) → ALL 8 slots locked, 4m09s outage
-//     until first cohort's smart-pause expired. With pool=12 the
-//     two transitions saturate 6 slots, leaving 6 fresh — survives.
-//
-// Why this works: VK's per-cred 486 quota is bound to allocation
-// LIFETIME (server-side ~600s timer), not client actions. The only way
-// to keep throughput during a path-cascade is to have enough fresh,
-// never-used slots that VK has no allocations against.
-//
-// Capacity math for back-to-back transitions (N=30, ~3 active slots
-// per phase): pool=12 absorbs 4 transitions before all-saturated;
-// pool=8 absorbs 2 (overlapping into the 3rd-transition window).
-// Three back-to-back transitions within ~10 min is rare enough that
-// pool=12 covers practically all real-world scenarios.
-//
-// Examples (cred slots → max conns at 10/slot, of which N for live
-//          conns, remainder are spare):
-//   n=1..4   → 2 (clamped to 2 for refresh insurance)
-//   n=5..7   → 4 (was 2 with old formula)
-//   n=8..12  → 4-5
-//   n=13..17 → 6-7
-//   n=18..22 → 8-9
-//   n=23..27 → 10-11
-//   n=28..32 → 12 (typical NumConns=30: 3 for conns + 9 spare)
-//   n=33..37 → 14
-//   n=38..42 → 16-17
-//   n=43..47 → 18-19
-//   n=48..52 → 20 (typical NumConns=50: 5 for conns + 15 spare)
-//
-// Trade-off: each extra spare slot is one more cred VK needs to issue
-// (PoW + slider, ~20-60 sec but happens in background after pre-bootstrap)
-// and one more allocation-refresh pulse every ~5 min in steady state.
-// Cold-start time is unaffected since pre-bootstrap fills only slot 0;
-// the remaining slots fill asynchronously via background grower while
-// the user is already browsing.
 func poolSizeForNumConns(n int) int {
 	if n <= 0 {
 		n = 1
@@ -1472,29 +1226,18 @@ func poolSizeForNumConns(n int) int {
 	return size
 }
 
-// newCredPool builds a pool sized to `size` conns with post-failure
-// `cooldown` (the time a slot waits after a failed fetch before being
-// eligible to retry). Per-entry freshness is derived from the cred's own
-// VK-supplied expiry timestamp (encoded in Username), with a safety
-// margin of credExpiryBuffer — see parseCredExpiry / isFreshLocked.
-//
-// seedSlot fills `slot` with externally-provided credentials. Used by
-// NewProxy when the main app's pre-bootstrap captcha flow already obtained
-// TURN creds via wgProbeVKCreds — we plant them in slot 0 so the first
-// conn's get() returns them without any VK API call, avoiding the
-// .connecting-window deadlock where a cold credPool would trigger another
-// captcha request the main app can't service.
-//
-// If the slot already holds a fresh cred (e.g. loaded from disk on
-// startup), the seed is ignored — the pre-existing cred is presumed
-// equally valid and equally usable, so there's no point overwriting it.
-// This is what makes "main app reads cache and uses cached cred as the
-// pre-bootstrap seed" work cleanly: the cache-read in the app and the
-// independent loadFromDisk in this pool both arrive at the same cred,
-// and seedSlot recognizes that and no-ops.
+// seedSlot installs an external credential or keeps a ready unrelated one.
+// Matching cached credentials contribute their complete relay list and are deduplicated.
 func (cp *credPool) seedSlot(slot int, addr string, creds *TURNCreds) {
 	cp.mu.Lock()
-	if len(cp.pool) > slot && cp.isFreshLocked(slot) {
+	knownSeed := false
+	for _, entry := range cp.pool {
+		if entry.creds != nil && creds != nil && entry.creds.Username == creds.Username {
+			knownSeed = true
+			break
+		}
+	}
+	if cp.mode != credCacheModeCookie && !knownSeed && len(cp.pool) > slot && cp.isFreshLocked(slot) {
 		cp.mu.Unlock()
 		log.Printf("credpool: seed for slot %d ignored — slot already has a fresh cred (likely loaded from disk)", slot)
 		return
@@ -1502,11 +1245,7 @@ func (cp *credPool) seedSlot(slot int, addr string, creds *TURNCreds) {
 	for len(cp.pool) <= slot {
 		cp.pool = append(cp.pool, credPoolEntry{})
 	}
-	// If the target slot already holds a pending cred (loaded from
-	// disk, waiting on saturation cooldown) with a DIFFERENT cred set
-	// than the seed, we'll move it aside instead of dropping it — it
-	// might still become useful in 10 minutes. Slots vacated by the
-	// dedup pass below are good targets for the relocation.
+	// Preserve a displaced credential in an empty slot when possible.
 	var displaced *credPoolEntry
 	if entry := cp.pool[slot]; entry.creds != nil && entry.creds.Username != creds.Username {
 		copyEntry := entry
@@ -1562,18 +1301,7 @@ func (cp *credPool) seedSlot(slot int, addr string, creds *TURNCreds) {
 			}
 		}
 	}
-	// Cookie mode: a slot on the seed's RELAY under another identity is the
-	// same quota (one okcdn user id) — every start the app's probe mints the
-	// first link and VK answers with the same first relay the previous run's
-	// seed sits on, on disk under another call id (2026-10-20, the user's
-	// run 8: two slots on one relay). The seed wins; the displaced pending
-	// credential, if it is on that relay, is not relocated either.
-	// Their quota history is not carried onto the seed and not lost: the
-	// relay's clock (relayUsedAt — fed at load and at every release) is
-	// applied to the seed by placeLocked for the relay the seed DIALS, and
-	// stays for whoever dials the twins' relay later (the user's review of
-	// 450: A's quarantine carried onto a never-used B; a same-username
-	// twin's quarantine lost with it).
+	// Cookie mode shares one relay quota across credentials. Deduplicate it.
 	relayTwins := 0
 	if creds != nil {
 		for {
@@ -1591,11 +1319,6 @@ func (cp *credPool) seedSlot(slot int, addr string, creds *TURNCreds) {
 			}
 		}
 	}
-	seedWait := cp.clockLocked(slot, cp.dialNowLocked(slot))
-	// Relocate the pre-seed pending cred (if any) into the first now-
-	// empty slot. We'd rather keep it pending and have it become
-	// usable in 10 min than discard a perfectly good cred and pay
-	// the VK PoW tax to refetch.
 	relocatedTo := -1
 	if displaced != nil {
 		for i := range cp.pool {
@@ -1622,15 +1345,12 @@ func (cp *credPool) seedSlot(slot int, addr string, creds *TURNCreds) {
 			log.Printf("credpool: cleared %d slot(s) holding the seed's relay %s under another identity (cookie mode: one quota per relay)",
 				relayTwins, addr)
 		}
-		if now := time.Now(); seedWait.After(now) {
-			log.Printf("credpool: seeded slot %d is pending — its relay was used %s ago (the relay's clock) — usable in %s",
-				slot, now.Sub(cp.relayUsedAt[cp.candidatesLocked(slot)[0]]).Round(time.Second), seedWait.Sub(now).Round(time.Second))
-		}
+
 		if relocatedTo >= 0 {
-			log.Printf("credpool: relocated pre-seed pending cred from slot %d to slot %d (will become usable when its saturation cooldown expires)",
+			log.Printf("credpool: relocated pre-seed credential from slot %d to slot %d",
 				slot, relocatedTo)
 		} else if displaced != nil {
-			log.Printf("credpool: pre-seed pending cred at slot %d had no empty slot to relocate to, dropped",
+			log.Printf("credpool: pre-seed credential at slot %d had no empty slot to relocate to, dropped",
 				slot)
 		}
 	}
@@ -1695,17 +1415,15 @@ func (cp *credPool) coldStartTargetValue() int {
 	return cp.coldStartTarget
 }
 
-func newCredPool(ctx context.Context, size int, cooldown time.Duration, cachePath string, fetch func(bool, int) (string, *TURNCreds, error)) *credPool {
+// newCredPool restores cached credentials and starts periodic persistence.
+// The unused duration argument is retained for existing callers.
+func newCredPool(ctx context.Context, size int, _ time.Duration, cachePath string, fetch func(bool, int) (string, *TURNCreds, error)) *credPool {
 	if size < 1 {
 		size = 1
-	}
-	if cooldown <= 0 {
-		cooldown = 2 * time.Minute
 	}
 	cp := &credPool{
 		ctx:       ctx,
 		size:      size,
-		cooldown:  cooldown,
 		cachePath: cachePath,
 		fetch:     fetch,
 		mode:      credCacheModeNow(),
@@ -1732,26 +1450,16 @@ func newCredPool(ctx context.Context, size int, cooldown time.Duration, cachePat
 		coldStartTarget: (size + 3) / 4,
 		health:          newRelayHealth(),
 		cursor:          map[int]int{},
-		relayUsedAt:     map[string]time.Time{},
 	}
 	if cachePath != "" {
-		readyAt := cp.loadFromDisk()
-		if delay := time.Until(readyAt); delay > 0 {
-			timer := time.NewTimer(delay)
-			select {
-			case <-timer.C:
-			case <-ctx.Done():
-			}
-			timer.Stop()
-		}
-		cp.wakeCachedCredentials()
+		cp.loadFromDisk()
 		// Periodic-save goroutine keeps lastUsedAt fresh on disk so a
 		// kill-mid-session leaves the file reflecting current activity.
 		// See credPeriodicSaveInterval comment.
 		cp.saverDone = make(chan struct{})
 		go cp.runPeriodicSave(ctx)
 	}
-	log.Printf("credpool: initialized with %d slots (expiry-buffer=%s, cooldown=%s, cache=%q)", size, credExpiryBuffer, cp.cooldown, cachePath)
+	log.Printf("credpool: initialized with %d slots (expiry-buffer=%s, cache=%q)", size, credExpiryBuffer, cachePath)
 	return cp
 }
 
@@ -1784,33 +1492,24 @@ func (cp *credPool) runPeriodicSave(ctx context.Context) {
 	}
 }
 
-// loadFromDisk populates the pool from cachePath (JSON written by a prior
-// process). Skips entries whose username-encoded expiry has elapsed
-// (with credExpiryBuffer margin), entries whose slot index exceeds the
-// current pool size (handles users shrinking NumConns between launches),
-// and the whole file on parse error or version mismatch — the pool just
-// stays empty in those cases and the normal fetch path takes over.
-//
-// Called once from newCredPool before the proxy starts handing out conns,
-// so no other goroutine is touching cp.pool yet — but we still take cp.mu
-// for clarity and to satisfy isFreshLocked's lock-held precondition. Returns
-// the end of a confirmed release's short delay for the constructor to await.
-func (cp *credPool) loadFromDisk() time.Time {
+// loadFromDisk restores valid credentials. Legacy usage and release timestamps
+// are ignored, so reconnects reach the TURN server immediately.
+func (cp *credPool) loadFromDisk() {
 	data, err := os.ReadFile(cp.cachePath)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			log.Printf("credpool: load: read %s: %v", cp.cachePath, err)
 		}
-		return time.Time{}
+		return
 	}
 	var f credCacheFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		log.Printf("credpool: load: corrupt JSON in %s: %v — ignoring file", cp.cachePath, err)
-		return time.Time{}
+		return
 	}
 	if f.Version != credCacheVersion {
 		log.Printf("credpool: load: version %d != expected %d — ignoring file", f.Version, credCacheVersion)
-		return time.Time{}
+		return
 	}
 	fileMode := f.Mode
 	if fileMode == "" {
@@ -1818,14 +1517,8 @@ func (cp *credPool) loadFromDisk() time.Time {
 	}
 	if fileMode != cp.mode {
 		log.Printf("credpool: load: the cache holds %s identities and this pool mints %s — ignoring file (it is rewritten at the next save)", fileMode, cp.mode)
-		return time.Time{}
+		return
 	}
-
-	released := cp.consumeReleasedCache(f)
-	if !released {
-		cp.inheritedUntil = inheritedCacheExpiry(f)
-	}
-	readyAt := time.Unix(0, f.ReleasedAt).Add(seatCoolFor)
 
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
@@ -1856,79 +1549,9 @@ func (cp *credPool) loadFromDisk() time.Time {
 			skipped++
 			continue
 		}
-		// Per-slot saturation. lastUsedAt == 0 means the slot was
-		// filled but no conn ever took it (background-grower reserve
-		// case) — VK has no allocations on this cred, immediately
-		// usable. Otherwise compute when VK's lingering allocations
-		// will have expired (lastUsedAt + credSaturationCooldown);
-		// while now < availableAt the slot is loaded but PENDING,
-		// not handed out to conns yet. This avoids the 486 cascade
-		// (using cred while VK still has live allocations on it) WHILE
-		// preserving a usable cred we'd otherwise discard — VK's PoW
-		// fetch path takes 10-30+ min on hostile days, far longer than
-		// the 10-min cooldown.
-		// The clock per relay (used_on) when the file has it; else the one
-		// last_used_at as every relay's (the entry's own history).
-		// 🚫 The entry's OWN history (lastUsed, availableAt — every relay's)
-		// comes from "*" or from a file from before used_on ALONE; the latest
-		// moment over every record (said) is for the log line and nothing
-		// else — written onto the entry it was saved back as "*" at the next
-		// save, and a relay never used was quarantined on the own relay's
-		// history (the user's review of 462).
-		var lastUsed, availableAt, said time.Time
-		on := map[string]*relayHist{}
-		star := false
-		for relay, unix := range entry.UsedOn {
-			if relay == "" || unix <= 0 {
-				continue
-			}
-			h := &relayHist{lastUsedAt: time.Unix(unix, 0)}
-			if ready := h.lastUsedAt.Add(credSaturationCooldown); now.Before(ready) {
-				h.availableAt = ready
-			}
-			if h.lastUsedAt.After(said) {
-				said = h.lastUsedAt
-			}
-			if relay == "*" { // the history whose relay is not known: the entry's own, every relay's
-				star = true
-				lastUsed, availableAt = h.lastUsedAt, h.availableAt
-				continue
-			}
-			on[relay] = h
-		}
-		if len(on) == 0 && !star && entry.LastUsedAt > 0 {
-			lastUsed = time.Unix(entry.LastUsedAt, 0)
-			ready := lastUsed.Add(credSaturationCooldown)
-			if now.Before(ready) {
-				availableAt = ready
-			}
-		}
-		if lastUsed.After(said) {
-			said = lastUsed
-		}
-		// Cookie mode: the quota history is the RELAY's (relayUsedAt, fed
-		// below from the file), never a slot's — the entry starts with none,
-		// so a slot the list re-points dials its new relay with neither a
-		// clock nor a mark of the old one's (the user's reviews of 450 and
-		// 459's run 6).
-		lastUsedSaid := said
-		if released {
-			lastUsed, availableAt, on = time.Time{}, readyAt, nil
-		}
-		if cp.mode == credCacheModeCookie {
-			lastUsed, availableAt, on = time.Time{}, time.Time{}, nil
-		}
 		for len(cp.pool) <= entry.Slot {
 			cp.pool = append(cp.pool, credPoolEntry{})
 		}
-		// Cookie mode: two slots on one relay are one quota — the fresher
-		// credential stays, the other is skipped (2026-10-20, the user's
-		// run 8: two slots on each of two relays; run 9: 486 on the second).
-		// Cookie mode: two slots on one relay are one quota — the fresher
-		// credential stays, the other is skipped (2026-10-20, the user's
-		// run 8: two slots on each of two relays; run 9: 486 on the second).
-		// Neither one's history is lost: the relay's clock is fed from EVERY
-		// entry of the file below, kept or not.
 		if twin := cp.cookieRelayTwinLocked(entry.Slot, creds); twin >= 0 {
 			if texp, _ := parseCredExpiry(cp.pool[twin].creds.Username); !exp.After(texp) {
 				log.Printf("credpool: load: slot %d holds the same relay %s as slot %d (cookie mode: one quota) — the older skipped",
@@ -1943,94 +1566,19 @@ func (cp *credPool) loadFromDisk() time.Time {
 			skipped++
 		}
 		cp.placeLocked(entry.Slot, credPoolEntry{
-			addr:      entry.Address,
-			addrs:     cp.candidatesForSlot(entry.Slot, creds),
-			creds:     creds,
-			ts:        now,
-			active:    cp.outstandingLocked(entry.Slot, creds), // the record's count — see credPool.holders
-			relayHist: relayHist{lastUsedAt: lastUsed, availableAt: availableAt},
-			on:        on,
+			addr:   entry.Address,
+			addrs:  cp.candidatesForSlot(entry.Slot, creds),
+			creds:  creds,
+			ts:     now,
+			active: cp.outstandingLocked(entry.Slot, creds), // the record's count — see credPool.holders
+
 		})
 		loaded++
-		until := cp.clockLocked(entry.Slot, cp.dialNowLocked(entry.Slot))
-		switch {
-		case released:
-			log.Printf("credpool: load: slot %d restored after confirmed release (addr=%s, expires in %s)",
-				entry.Slot, entry.Address, time.Until(exp).Round(time.Second))
-		case lastUsedSaid.IsZero():
-			log.Printf("credpool: load: slot %d ready (addr=%s, expires in %s, never used in last session)",
-				entry.Slot, entry.Address, time.Until(exp).Round(time.Second))
-		case until.IsZero():
-			log.Printf("credpool: load: slot %d ready (addr=%s, expires in %s, last used %s ago — outside saturation window)",
-				entry.Slot, entry.Address, time.Until(exp).Round(time.Second),
-				now.Sub(lastUsedSaid).Round(time.Second))
-		default:
-			log.Printf("credpool: load: slot %d pending (addr=%s, expires in %s, last used %s ago — usable in %s once VK allocations expire)",
-				entry.Slot, entry.Address, time.Until(exp).Round(time.Second),
-				now.Sub(lastUsedSaid).Round(time.Second),
-				until.Sub(now).Round(time.Second))
-		}
-	}
-	// Cookie mode: the relays' quota clocks — from the file's own map and from
-	// every entry's lastUsedAt under the relay it was stored with (files from
-	// before the map; entries skipped or dropped above included: the seats
-	// are the relay's, not the entry's) — then applied to every slot by the
-	// relay it dials NOW (the user's review of 450).
-	if cp.mode == credCacheModeCookie {
-		feed := func(relay string, unix int64) {
-			if relay == "" || unix <= 0 {
-				return
-			}
-			at := time.Unix(unix, 0)
-			if released {
-				at = readyAt.Add(-credSaturationCooldown)
-			}
-			if at.After(cp.relayUsedAt[relay]) {
-				cp.relayUsedAt[relay] = at
-			}
-		}
-		if len(f.RelayUsedAt) > 0 {
-			// The new format: the map IS the clock. An entry's stored address
-			// is the credential's VK address, not necessarily the relay it
-			// dialled (a seed under an override list) — reading its history
-			// under that address would quarantine a relay nobody used (the
-			// user's review of 451).
-			for relay, unix := range f.RelayUsedAt {
-				feed(relay, unix)
-			}
-		} else {
-			// A file from before the map: the entries' own history under the
-			// address they were stored with is all there is — migrated once;
-			// the next save writes the map.
-			for _, entry := range f.Creds {
-				feed(entry.Address, entry.LastUsedAt)
-			}
-		}
-		for i := range cp.pool {
-			if cp.pool[i].creds == nil {
-				continue
-			}
-			before := cp.pool[i].availableAt
-			cp.applyRelayQuarantineLocked(i)
-			if released {
-				continue
-			}
-			if after := cp.pool[i].availableAt; !after.Equal(before) {
-				if after.IsZero() {
-					log.Printf("credpool: load: slot %d ready after all — its relay %s was not used within the cooldown (its own history was another relay's)", i, cp.candidatesLocked(i)[0])
-				} else {
-					log.Printf("credpool: load: slot %d pending — its relay %s was used %s ago by another slot (the relay's clock) — usable in %s",
-						i, cp.candidatesLocked(i)[0], now.Sub(cp.relayUsedAt[cp.candidatesLocked(i)[0]]).Round(time.Second), after.Sub(now).Round(time.Second))
-				}
-			}
-		}
+		log.Printf("credpool: load: slot %d ready (addr=%s, expires in %s)", entry.Slot, entry.Address, time.Until(exp).Round(time.Second))
 	}
 	log.Printf("credpool: loaded %d slots from disk (%d skipped); file saved at %s",
 		loaded, skipped, time.Unix(f.SavedAt, 0).Format(time.RFC3339))
-	if released {
-		return readyAt
-	}
-	return time.Time{}
+	return
 }
 
 // saveToDisk snapshots the pool's filled slots and writes them to
@@ -2044,10 +1592,6 @@ func (cp *credPool) loadFromDisk() time.Time {
 // I/O. Two concurrent fetches completing simultaneously will serialize
 // here without trampling each other's .tmp file.
 func (cp *credPool) saveToDisk() {
-	cp.saveCache(time.Time{})
-}
-
-func (cp *credPool) saveCache(releasedAt time.Time) {
 	if cp.cachePath == "" {
 		return
 	}
@@ -2065,116 +1609,22 @@ func (cp *credPool) saveCache(releasedAt time.Time) {
 		if entry.creds == nil {
 			continue
 		}
-		// For active slots stamp LastUsedAt as "now" — the slot is
-		// holding live VK allocations at this very moment, which is the
-		// most recent ground truth we have. release() will update the
-		// in-memory lastUsedAt when active drops to 0; until then the
-		// in-memory value may be stale (e.g. zero for a slot that was
-		// filled by background grower and is currently in active use).
-		var lastUsed int64
-		if entry.active > 0 {
-			lastUsed = now.Unix()
-		} else if !entry.lastUsedAt.IsZero() {
-			lastUsed = entry.lastUsedAt.Unix()
-		}
-		// Per relay (relayhist.go): "now" for a relay with seats out, else
-		// the last seat's give-back when within the cooldown; last_used_at
-		// stays the latest of them all for bootstrap seeding.
-		var usedOn map[string]int64
-		note := func(relay string, at time.Time) {
-			if relay == "" || at.IsZero() || now.Sub(at) >= credSaturationCooldown {
-				return
-			}
-			if usedOn == nil {
-				usedOn = map[string]int64{}
-			}
-			if at.Unix() > usedOn[relay] {
-				usedOn[relay] = at.Unix()
-			}
-			if at.Unix() > lastUsed {
-				lastUsed = at.Unix()
-			}
-		}
-		for relay, n := range cp.seats[leaseKeyOf(slot, entry.creds)] {
-			if n > 0 {
-				note(relay, now)
-			}
-		}
-		for relay, h := range entry.on {
-			note(relay, h.lastUsedAt)
-		}
-		// The entry's own history (relay not known — a file from before
-		// used_on, seats the record could not place): kept under "*", every
-		// relay's, so a relay of its own written beside it does not end it.
-		note("*", entry.lastUsedAt)
-		if cp.unattributedLocked(slot) > 0 {
-			note("*", now)
-		}
 		f.Creds = append(f.Creds, credCacheEntry{
-			Slot:       slot,
-			Address:    entry.addr,
-			Addresses:  entry.creds.Addresses,
-			Username:   entry.creds.Username,
-			Password:   entry.creds.Password,
-			LastUsedAt: lastUsed,
-			UsedOn:     usedOn,
+			Slot:      slot,
+			Address:   entry.addr,
+			Addresses: entry.creds.Addresses,
+			Username:  entry.creds.Username,
+			Password:  entry.creds.Password,
 		})
-	}
-	// Cookie mode: the relays' quota clocks — a slot in use holds seats NOW on
-	// the relay it dials; clocks older than the cooldown say nothing.
-	if cp.mode == credCacheModeCookie {
-		for slot, entry := range cp.pool {
-			if entry.creds != nil && entry.active > 0 {
-				cp.noteRelayUsedLocked(slot, now)
-			}
-		}
-		for relay, at := range cp.relayUsedAt {
-			if now.Sub(at) < credSaturationCooldown {
-				if f.RelayUsedAt == nil {
-					f.RelayUsedAt = map[string]int64{}
-				}
-				f.RelayUsedAt[relay] = at.Unix()
-			}
-		}
 	}
 	cp.mu.Unlock()
 
-	if !releasedAt.IsZero() && !cp.pendingRelease && !now.Before(cp.inheritedUntil) {
-		cp.cacheReleasedAt = releasedAt
-	}
-	if !cp.cacheReleasedAt.IsZero() {
-		f.ReleasedAt = cp.cacheReleasedAt.UnixNano()
-	} else if cp.cacheRestarted || cp.pendingRelease {
-		f = dirtyCredCache(f, now)
-	}
 	if err := cp.writeCache(f); err != nil {
 		log.Printf("credpool: save: %v", err)
 		return
 	}
-	if cp.pendingRelease {
-		cp.cacheRestarted = true
-		cp.pendingRelease = false
-	}
 }
 
-// get returns (addr, creds, credSlot, err) for the given connIdx.
-// credSlot identifies which pool slot's creds were ultimately used —
-// may equal connIdx (own slot) or some other index (fallback).
-// credSlot < 0 iff err != nil.
-//
-// Semantics, in priority order:
-//  1. pool[connIdx] fresh → return it (no VK call).
-//  2. Any other pool slot fresh → fallback to round-robin over fresh
-//     slots (no VK call). This is the key change: we don't try to fetch
-//     into pool[connIdx] when a working cred is already available, so
-//     startup is fast and VK is not pressed for multiple captchas.
-//  3. No fresh slot, and pool[connIdx] is on cooldown → surface an
-//     error so the caller's reconnect loop can back off.
-//  4. No fresh slot, no cooldown → inline fetch (releases mu during the
-//     VK call). On success, fills pool[connIdx]. On failure, sets
-//     cooldown on pool[connIdx] and re-checks for fresh fallback (some
-//     other goroutine may have filled one while we were fetching).
-// capText spells a slot's cap for a log line.
 func capText(capacity int) string {
 	if capacity >= unlimitedCap {
 		return "∞"
@@ -2191,32 +1641,6 @@ func capText(capacity int) string {
 // out a saturated slot's cred.
 const connsPerSlot = 10
 
-// pickAcquireSlotLocked picks the best slot for connIdx to acquire, or
-// returns -1 if no slot is usable. Caller must hold cp.mu.
-//
-// Selection priority:
-//  1. ownSlot if fresh + has capacity + not VK-saturated.
-//  2. Among other fresh + capacity + non-saturated slots, the one with
-//     the highest active count (compact-fill: consolidate conns onto
-//     already-in-use slots so each path-change event marks fewer slots).
-//  3. If no candidate has active>0 (all idle), the lowest-index idle
-//     candidate — same order the prior implementation used.
-//
-// kind classifies the choice for the caller's log line: "own",
-// "compact", or "fresh" (or "" if no slot found).
-//
-// logSkips=true emits per-slot "skipping (VK-saturated)" log lines for
-// slots passed over due to active saturation cooldowns. Pass false on
-// the post-fetch retry path to avoid duplicating log lines the initial
-// scan already produced.
-//
-// Compact-fill rationale: MarkInUseSlotsForPathChange (smart-pause)
-// marks EVERY slot with active>0 on each PathMonitor event. Spreading
-// 30 conns across 7 slots costs 7 marks per event; clustering on the
-// optimal 3 costs 3. Compact-fill keeps the spread near the floor of
-// ceil(NumConns/connsPerSlot), so the pool survives more back-to-back
-// cascades before all-saturated. See open_improvement_compact_fill in
-// memory for the empirical context (build 87, 2026-05-14).
 func (cp *credPool) pickAcquireSlotLocked(connIdx, ownSlot int, logSkips bool) (int, string, string) {
 	now := time.Now()
 
@@ -2229,11 +1653,6 @@ func (cp *credPool) pickAcquireSlotLocked(connIdx, ownSlot int, logSkips bool) (
 				connIdx, ownSlot, cp.health.deadList(cp.candidatesLocked(ownSlot)))
 		}
 	}
-	// eligible: the slot's credential may seat THIS connection — on the relay
-	// the connection would dial (peekAddrLocked: its cursor's), by that
-	// relay's clock, its marks and its quota (relayhist.go). The user's
-	// review of 2026-10-31: the cap and the marks were read off the FIRST
-	// unmarked candidate while the connection dialled the second.
 	eligible := func(i int) (string, bool) {
 		if i < 0 || i >= len(cp.pool) || !cp.hasRelayLocked(i) {
 			return "", false
@@ -2339,18 +1758,6 @@ func (cp *credPool) pickAcquireSlotLocked(connIdx, ownSlot int, logSkips bool) (
 	return slots[i], addrs[i], kindOf(slots[i])
 }
 
-// poolParkError is get()'s "not now" answer — a path-change pause, the
-// cold-start cap, or no slot at all. It carries the slot-available channel
-// that was CURRENT under the pool's lock at the moment of the decision, so
-// the caller parks on the broadcast it would otherwise have missed: get()
-// used to return a plain error after Unlock, runConnection logged the
-// session's end and only THEN asked slotAvailableChannel() for a channel —
-// a broadcast landing in that gap (a mint finishing, a release, a cooldown
-// ending) closed a channel nobody held, and the conn waited out its 2–7 s
-// timer or the 30–60 s dormancy for the NEXT one (Sep 7 §71's lost-wakeup
-// gap; exposed by the cold-start herd, where the mints land exactly while
-// eighteen conns are parking). Its text is unchanged from the old errors —
-// the log lines and the tests that read them are as before.
 type poolParkError struct {
 	msg  string
 	wake <-chan struct{}
@@ -2359,9 +1766,6 @@ type poolParkError struct {
 func (e *poolParkError) Error() string { return e.msg }
 
 func (cp *credPool) handOut(connIdx int, allowCaptchaBlock bool) (string, *TURNCreds, int, uint64, error) {
-	if !cp.ensureCacheDirty() {
-		return "", nil, -1, 0, errors.New("credpool: waiting to invalidate the previous cache release confirmation on disk")
-	}
 	cp.mu.Lock()
 
 	// Path-change pause: while pauseAcquireUntil is in the future, refuse
@@ -2376,12 +1780,6 @@ func (cp *credPool) handOut(connIdx int, allowCaptchaBlock bool) (string, *TURNC
 		return "", nil, -1, 0, &poolParkError{msg: fmt.Sprintf("credpool: paused for path-change settle, %s remaining", remaining), wake: wake}
 	}
 
-	// ownSlot is the slot this conn would prefer to live on, by
-	// distributing N conns across ceil(N/10) cred sets — slot 0 hosts
-	// conn 0-9, slot 1 hosts conn 10-19, etc. This is a preference,
-	// not a strict binding: if ownSlot isn't ready (empty, on cooldown,
-	// being fetched, or saturated), the conn happily uses any other
-	// slot with quota room.
 	ownSlot := connIdx / connsPerSlot
 	if ownSlot < 0 {
 		ownSlot = 0
@@ -2453,83 +1851,7 @@ func (cp *credPool) handOut(connIdx int, allowCaptchaBlock bool) (string, *TURNC
 		return "", nil, -1, 0, park
 	}
 
-	// The relay-refusal breaker (quotabreaker.go): while the relay refuses
-	// fresh identities, a mint is waste — park; the breaker's timer
-	// broadcasts at the pause's end. Before the cap, so the park says why.
-	if remaining, paused := cp.mintPausedLocked(time.Now()); paused {
-		wake := cp.slotAvailableCh
-		cp.mu.Unlock()
-		return "", nil, -1, 0, &poolParkError{msg: fmt.Sprintf("credpool: minting paused — the relay refuses fresh credentials (486), %s remaining", remaining.Round(time.Second)), wake: wake}
-	}
-
-	// Phase 2 cold-start cap: don't let a COLD pool get over-fetched. When the
-	// pool starts empty (fresh install, or after a Settings "reset creds") and
-	// all NumConns race into get() at once with zero creds, only the first
-	// ~ceil(NumConns/connsPerSlot) conns should fetch a cred; the rest must PARK
-	// and SHARE those once they land (woken via slotAvailableCh /
-	// broadcastSlotAvailable), instead of each grabbing its own empty reserve
-	// slot. Without this cap every racing conn fetches into a distinct empty
-	// slot → the whole pool is over-provisioned → many creds get allocated at a
-	// burst rate → VK 486 "Allocation Quota Reached" → a self-perpetuating
-	// saturation cascade that leaves the surplus conns permanently unable to
-	// connect (observed 2026-05-30/31 after a reset-creds + forced-legacy test:
-	// 30 conns cold-started empty → over-fetched 12 slots → stuck 20/20).
-	//
-	// "provisioned" = creds we already hold (usable, any saturation state) +
-	// creds in flight (fetching). coldStartTarget ≈ ceil(NumConns/connsPerSlot),
-	// recovered from the pool size (size = ceil(NumConns*4/10) ⇒ ceil(size/4)).
-	// When provisioned already covers the target we have/will-have enough creds
-	// to host every conn at quota, so a conn that found no usable slot in
-	// Phase 1 parks: a slot opens up (a fetch completes, or a saturated slot's
-	// cooldown expires → broadcastSlotAvailable) and the conn shares it via the
-	// normal Phase-1 acquire on retry. This aligns conn-driven fetches with the
-	// grower's existing cold-start target (growCredPool) — the grower still
-	// fills reserve slots beyond the target, but slowly + staggered.
 	{
-		// Count with the SAME predicate Phase 1 hands slots out by.
-		//
-		// This used to call countWithUnexpiredCredsLocked (then misleadingly
-		// named countWithUnexpiredCredsLocked) and assign it to a local called
-		// `usable`. That counts a cred as provisioned when it merely has not
-		// EXPIRED — it ignores the per-relay cooldown that Phase 1 checks via
-		// entryIsFresh. So a pool whose slots are all cooling down looked fully
-		// provisioned, the target was satisfied, nothing fetched, and Phase 1
-		// still refused every slot. The conn parked for a cooldown instead of
-		// spending three seconds on a fresh cred, and bootstrap retried until
-		// it gave up:
-		//
-		//   credpool: load: slot 0 pending (… usable in 9m57s once VK allocations expire)
-		//   credpool: cold-start cap (3 usable+inflight >= 3 target) — parking to share
-		//   credpool-grow: bootstrap did not succeed within 2m, grower exiting
-		//
-		// Fetching here does NOT burn the quota this cap protects: that quota is
-		// per (okcdn user-id, relay), and a fresh fetch mints a NEW VK session —
-		// a different user-id, unrelated to the relays currently cooling down.
-		//
-		// No "but the cooldown might be about to end" threshold, deliberately.
-		// Across every log where the cap fired (29.07 vpn.10/13/16, 75 parked
-		// slots) the SHORTEST remaining cooldown was 105s and the median ~8min;
-		// there was no near-expiry case to protect. A threshold would be a
-		// guess dressed as caution.
-		//
-		// The original burst case is untouched: there the slots are empty, so
-		// availableAt is zero and both predicates agree.
-		// 🚨 COUNT BY THE PREDICATE PHASE 1 HANDS OUT BY — and Phase 1 refuses
-		// a VK-saturated slot (see pickAcquireSlotLocked's "skipping slot N
-		// (VK-saturated …)"), so a saturated slot is NOT ready. Build 204
-		// fixed the cooldown half of this rule; the saturation half bit on
-		// 2026-09-06 (build 360, an LTE→Wi-Fi switch): the path-change marking
-		// saturated the three in-use slots, this line counted them as "3
-		// ready ≥ 3 target — parking", Phase 1 skipped them, and thirty
-		// connections parked for 40 s (then 3 min 20 s on the next switch)
-		// with an EMPTY slot in the pool. A fresh fetch is a new VK identity
-		// with its own quota; the saturated creds' allocations are dead. And
-		// since the marks are the RELAY's (2026-10-31) the question is asked
-		// for THIS connection, on the relay it would dial: a slot benched on
-		// the cursor's relay and free on a silent one ahead of it is not ready
-		// to it (the stands, 2026-11-01: counted by the slot's first relay, two
-		// such slots held six connections parked for two minutes, nothing
-		// minting and the silent relay never marked for want of an answer).
 		ready := cp.countAvailableForLocked(connIdx)
 		inFlight := 0
 		for i := range cp.pool {
@@ -2548,25 +1870,12 @@ func (cp *credPool) handOut(connIdx int, allowCaptchaBlock bool) (string, *TURNC
 		}
 	}
 
-	// Phase 2: no usable fresh slot. Pick a fetch target — first
-	// candidate that's not fresh AND not pending AND not on cooldown
-	// AND not already being fetched. Prefer ownSlot here too. Skipping
-	// fresh-saturated slots is critical: replacing the cred there
-	// would orphan the 10 conns currently bound to it. Skipping
-	// pending slots avoids overwriting a disk-loaded cred that's about
-	// to become available on its own — a wasted VK fetch (and likely
-	// captcha attempt) for no benefit.
+	// Phase 2 selects an expiring or missing credential without an active fetch.
 	now := time.Now()
 	target := -1
 	for _, slot := range candidatesOrdered() {
 		if cp.isFreshLocked(slot) {
 			continue // saturated-fresh, must not be replaced
-		}
-		if cp.pendingLocked(slot) {
-			continue // disk-loaded, waiting on saturation cooldown
-		}
-		if now.Before(cp.pool[slot].cooldownUntil) {
-			continue
 		}
 		if cp.pool[slot].fetching {
 			continue
@@ -2576,36 +1885,20 @@ func (cp *credPool) handOut(connIdx int, allowCaptchaBlock bool) (string, *TURNC
 	}
 
 	if target == -1 {
-		// Second pass: a VK-saturated slot that NO connection is bound to
-		// any more. The "must not be replaced" above protects the ten conns
-		// bound to a saturated cred; with active == 0 there are none — after a
-		// path-change restart that is every marked slot, and its allocations
-		// are dead at VK anyway. Replacing the cred forgets it on our side
-		// only; a fresh mint is a new identity with its own quota. Without
-		// this pass a full pool (every slot saturated or pending) has nowhere
-		// to mint and thirty connections wait out a 10-minute cooldown. The
-		// bench is read on the relay THIS connection would dial (the marks are
-		// the relay's): a slot free on a silent relay ahead of the cursor's is
-		// no use to it, and judged by that relay it was no target either (the
-		// stands, 2026-11-01).
 		for _, slot := range candidatesOrdered() {
 			e := cp.pool[slot]
 			blocked := e.creds != nil && !cp.health.hasCandidate(cp.candidatesLocked(slot)) // every relay it names is marked: a fresh mint may bring others
 			benched := e.creds != nil && now.Before(cp.markLocked(slot, cp.peekAddrLocked(slot, connIdx)))
-			if e.creds != nil && (benched || blocked) && e.active == 0 && !e.fetching && !now.Before(e.cooldownUntil) {
+			if e.creds != nil && (benched || blocked) && e.active == 0 && !e.fetching {
 				target = slot
 				break
 			}
 		}
 	}
 	if target == -1 {
-		// Every slot is either saturated with conns still bound, pending, on
-		// cooldown, or being fetched by someone else. Return a descriptive
-		// error so the caller's reconnect loop knows to back off and try
-		// again later.
 		wake := cp.slotAvailableCh
 		cp.mu.Unlock()
-		return "", nil, -1, 0, &poolParkError{msg: "credpool: no slot available (all saturated, cooling down, or fetching)", wake: wake}
+		return "", nil, -1, 0, &poolParkError{msg: "credpool: no slot available (all seats occupied or credentials being fetched)", wake: wake}
 	}
 	gen := cp.claimForFetchLocked(target)
 	cp.mu.Unlock()
@@ -2615,12 +1908,6 @@ func (cp *credPool) handOut(connIdx int, allowCaptchaBlock bool) (string, *TURNC
 	addr, creds, fetchErr := cp.fetch(allowCaptchaBlock, target)
 
 	cp.mu.Lock()
-	// The slot may have changed hands during the fetch (a Resume reset the
-	// pool, invalidateEntry cleared it, a later claim took it): then what
-	// sits there is not ours to overwrite or to put on cooldown. A credential
-	// we did get goes into an empty slot with our seat on it; with none free
-	// this fetch is lost (one VK solve) and the failure path below falls back
-	// through the pool as on any failed fetch.
 	owns := cp.ownsLocked(target, gen)
 	if owns {
 		cp.pool[target].fetching = false
@@ -2663,36 +1950,16 @@ func (cp *credPool) handOut(connIdx int, allowCaptchaBlock bool) (string, *TURNC
 			}
 		}
 		if got < 0 {
-			// Not kept: fall through to the failure path with an error of our
-			// own — it puts no cooldown on a slot that is not ours and looks
-			// for a seat in the pool as after any failed fetch (in cookie mode
-			// that seat is the refilled slot itself, when it has one free).
 			log.Printf("credpool: conn %d: slot %d changed hands during the fetch — fetched cred dropped (%s)", connIdx, target, why)
 			fetchErr = fmt.Errorf("credpool: slot %d changed hands during the fetch, fetched cred dropped (%s)", target, why)
 		} else {
-			// The fresh credential sits in its slot now — and the slot has to
-			// be READY like any other before a seat is taken: in cookie mode
-			// its relay's seats may still be held by leases that ended a
-			// minute ago (the relay's clock made it pending at placement; the
-			// user's review of 451: handed out with fresh=false, active=1).
+			// Pick a relay before checking its live lease capacity.
 			dial, ok := cp.pickAddrLocked(got, connIdx)
 			if !ok {
 				park := cp.relayParkLocked(connIdx, got)
 				cp.mu.Unlock()
 				cp.saveToDisk()
 				return "", nil, -1, 0, park
-			}
-			if until := cp.clockLocked(got, dial); time.Now().Before(until) {
-				wait := time.Until(until).Round(time.Second)
-				cp.armHealthWakeLocked(until)
-				wake := cp.slotAvailableCh
-				cp.mu.Unlock()
-				if got < len(cp.authErrors) {
-					cp.authErrors[got].Store(0)
-				}
-				cp.saveToDisk()
-				log.Printf("credpool: conn %d: the fresh credential in slot %d dials a relay whose seats may still be held — pending, usable in %s — parking", connIdx, got, wait)
-				return "", nil, -1, 0, &poolParkError{msg: fmt.Sprintf("credpool: slot %d's fresh credential is pending (its relay's seats may still be held) — parking, usable in %s", got, wait), wake: wake}
 			}
 			// A credential issued AGAIN into its slot (cookie mode after a
 			// Resume's invalidate()) starts with its previous holders still
@@ -2734,13 +2001,7 @@ func (cp *credPool) handOut(connIdx int, allowCaptchaBlock bool) (string, *TURNC
 		}
 	}
 
-	// Fetch failed. Set cooldown on the target so we don't hammer it
-	// every reconnect. Then check once more for a fresh-and-available
-	// slot — background grower may have filled one while we were
-	// blocked on VK.
-	if owns {
-		cp.pool[target].cooldownUntil = time.Now().Add(cp.cooldown)
-	}
+	// A failed fetch may still fall back to credentials filled concurrently.
 	// Compact-fill applies here too: if the grower or another conn
 	// filled a slot during our fetch window, prefer the most-active
 	// one. logSkips=false because Phase 1's initial scan already
@@ -2764,13 +2025,13 @@ func (cp *credPool) handOut(connIdx int, allowCaptchaBlock bool) (string, *TURNC
 		default: // "fresh"
 			tag = "fallback fresh slot"
 		}
-		log.Printf("credpool: conn %d fetch into slot %d failed (%v), falling back to slot %d (%s, active=%d/%d, age %s), cooldown %s — relay %s",
-			connIdx, target, fetchErr, slot, tag, e.active, connsPerSlot, time.Since(e.ts).Round(time.Second), cp.cooldown, dial)
+		log.Printf("credpool: conn %d fetch into slot %d failed (%v), falling back to slot %d (%s, active=%d/%d, age %s), relay %s",
+			connIdx, target, fetchErr, slot, tag, e.active, connsPerSlot, time.Since(e.ts).Round(time.Second), dial)
 		return dial, e.creds, slot, hand, nil
 	}
 	cp.mu.Unlock()
-	log.Printf("credpool: conn %d fetch into slot %d failed and no fallback available: %v (cooldown %s)",
-		connIdx, target, fetchErr, cp.cooldown)
+	log.Printf("credpool: conn %d fetch into slot %d failed and no fallback available: %v",
+		connIdx, target, fetchErr)
 	return "", nil, -1, 0, fetchErr
 }
 
@@ -2783,39 +2044,6 @@ func (cp *credPool) get(connIdx int, allowCaptchaBlock bool) (string, *TURNCreds
 	return addr, creds, slot, err
 }
 
-// release decrements the active conn count on slot, signaling that the
-// caller is no longer using its cred. Must be paired with a successful
-// get() on the same slot. Idempotent for invalid slot indices (e.g. -1
-// from a get() that errored out).
-//
-// When active drops to zero we stamp lastUsedAt with the current time —
-// that's the latest moment we can be sure the slot was carrying live
-// VK-side allocations. saveToDisk persists this so the next launch can
-// decide per-slot whether enough time has passed for those allocations
-// to have expired server-side (~10 min lifetime) before reusing the
-// cred. See loadFromDisk's per-entry cooldown check.
-//
-// 🚨 A LEASE NAMES ITS CREDENTIAL, not only its slot (the field run of
-// 2026-09-18). The slot may have been refilled since the lease was taken —
-// the grower renews a credential ~30 min before it expires with up to ten
-// sessions still running on the old one (the relay keeps refreshing an
-// existing allocation past the credential's expiry), and invalidate() /
-// invalidateEntry empty a slot under its holders. What sits there then is
-// ANOTHER identity with its own holders: an old lease's release must not take
-// one of THEIR seats (the pool would under-count, seat an eleventh and earn a
-// 486), stamp THEIR lastUsedAt or announce room on THEIR slot. So the lease
-// comes off the record of what it was taken ON (credPool.holders — it has
-// ended whatever the slot holds now), and the entry is touched only while it
-// still holds the leased username (holdsLocked, the rule noteAllocated applies
-// to the success mark).
-//
-// 🚨 And when the slot holds the SAME username issued again — cookie mode
-// after a Resume's invalidate() — the entry IS this lease's: it was published
-// with the record's count (outstandingLocked), so the old holders are still
-// seated on it and this release frees a seat that was really taken. By
-// username alone, with the count restarted at 0, such a release made ten new
-// holders look like nine, announced room and let an eleventh onto the
-// credential (the user's review of build 409).
 func (cp *credPool) release(slot int, creds *TURNCreds, addr string) {
 	if slot < 0 {
 		return
@@ -2904,7 +2132,6 @@ func (cp *credPool) release(slot int, creds *TURNCreds, addr string) {
 			cp.pool[slot].lastUsedAt = now // a seat whose relay is not known: the entry's own history, every relay's
 		}
 		if cp.pool[slot].active == 0 {
-			cp.noteRelayUsedLocked(slot, now) // the relay's clock (cookie mode)
 			if cp.configuredOffLocked(slot) {
 				// The last seat of a slot whose relay the TURN override list
 				// dropped (cookie mode): the slot may take a free entry now.
@@ -2973,30 +2200,6 @@ func (cp *credPool) holdsLocked(slot int, creds *TURNCreds) bool {
 	return now != nil && now.Username == creds.Username
 }
 
-// markSaturated marks slot as VK-side quota-saturated until time.Now()+
-// duration. Phase 1 of get() will skip the slot during this window even
-// if it's otherwise fresh — the cred is fine, but VK still has lingering
-// allocations from before that prevent us from acquiring new ones.
-//
-// Called by the proxy's reconnect path when runTURN fails with 486
-// Allocation Quota Reached. The duration is typically vkSaturationCooldown
-// (3m) — long enough to let most ghost allocations time out server-side,
-// short enough to retry well within VK's full ~600s TURN lifetime. If
-// we're still hitting 486 after the cooldown, the next failure re-marks.
-//
-// Schedules a timer that calls broadcastSlotAvailable on expiry so any
-// conn currently parked in runConnection's dormancy select wakes up the
-// instant the slot recovers, instead of sleeping through the rest of its
-// randomised 30s-3min back-off (which observably wasted 5+ min in
-// vpn.wifi.2.log on 2026-05-06). Re-arming a still-pending timer Stops
-// the old one first; spurious fires from already-replaced entries are
-// harmless (broadcastSlotAvailable tolerates them by design).
-//
-// saturationSnapshot returns (saturatedCount, totalSlots, longestCooldownRemaining).
-// Used by bootstrap to log a single clear diagnostic when all retry attempts
-// failed because the entire pool is in 486 cooldown — without this, the log
-// shows N independent "[conn X] TURN allocate quota error" lines and the
-// reader has to manually correlate them. Locks cp.mu briefly.
 func (cp *credPool) saturationSnapshot() (saturated, total int, longest time.Duration) {
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
@@ -3015,280 +2218,32 @@ func (cp *credPool) saturationSnapshot() (saturated, total int, longest time.Dur
 	return
 }
 
-// Idempotent for invalid slot indices. Returns the chosen cooldown
-// duration so the caller can log it; zero return means the slot index
-// was invalid and nothing was marked.
-//
-// Cooldown is adaptive based on slot's current activity and lastUsedAt:
-//   - If slot has active>0 right now (conns still holding it), or
-//     lastUsedAt is within `activeAllocationsWindow`, VK's quota is
-//     genuinely full of our allocations and we wait
-//     `vkActiveAllocationsCooldown` (11m, matching VK's ~600s TURN
-//     allocation lifetime + safety).
-//   - Otherwise the 486 is most likely residual session state from
-//     other clients on the same client_id (rare, but possible), and
-//     the shorter `vkSaturationCooldown` (3m) suffices.
-//
-// Note vpn.wifi-lte-wifi.2.log (build 60) revealed the active>0 check
-// matters: during a path change, conns die and IMMEDIATELY re-acquire
-// the slot before active ever drops to 0. lastUsedAt may never have
-// been set since cred fetch (it's only updated on active 10→0
-// transitions), so a check based purely on lastUsedAt picked
-// "ghost-likely" 3m for slots that genuinely had VK-side allocations
-// in flight from milliseconds-ago use.
-//
-// creds is the credential the refused lease named. A 486 for one the slot no
-// longer holds (the slot was refilled or emptied between the lease and the
-// relay's answer) says nothing about what sits there now: marking would bench
-// a fresh identity for minutes, and the breaker would read the refusal against
-// the NEW entry's age and success count — a false "the relay refuses fresh
-// credentials". It is counted as a 486 the pool was told of, and dropped.
+// markSaturated records an actual quota refusal without a local eligibility timer.
+// The connection loop controls retries. Late responses do not alter new credentials.
 func (cp *credPool) markSaturated(slot int, creds *TURNCreds, addr string) time.Duration {
-	if slot < 0 {
-		return 0
-	}
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
-	if slot >= cp.size || slot >= len(cp.pool) {
+	if slot < 0 || slot >= cp.size || slot >= len(cp.pool) {
 		return 0
 	}
 	if !cp.holdsLocked(slot, creds) {
 		cp.noteStaleQuotaRefusalLocked()
-		log.Printf("credpool: a 486 on slot %d names a credential the slot no longer holds — nothing is marked and the breaker's freshness test does not see it (the slot was refilled or emptied since that lease)", slot)
 		return 0
 	}
-
-	// A 486 right behind a seat this side gave back on this very credential
-	// is the relay's second — it keeps a deallocated seat on the quota for one
-	// second more — and not saturation: nothing is marked, the breaker's
-	// freshness test does not see it, a zero cooldown tells the caller so
-	// (seatcool.go).
-	if over, ok := cp.relaysSecondLocked(slot, creds, time.Now()); ok {
-		cp.noteRelaysSecondLocked(slot, over, time.Now())
-		return 0
-	}
-
-	// The 486 is the RELAY's — the credential's seats there, its clock there
-	// (relayhist.go): a refusal names no relay only from a caller that does
-	// not know it, and is then read against the entry's own history.
-	entry := cp.pool[slot]
-	if addr == "" {
-		addr = cp.oneRelayWithSeatsLocked(leaseKeyOf(slot, creds)) // a caller that does not know: where the seats are
-	}
-	hist := cp.histLocked(slot, addr)
-	active := entry.active
-	if addr != "" {
-		active = cp.seatsOnLocked(slot, addr)
-	}
-	// The relay-refusal breaker hears of every 486 here, native and csqtt
-	// alike, before the slot's own cooldown is chosen — quotabreaker.go.
 	cp.noteQuotaRefusalLocked(slot, time.Now())
-	age := time.Since(hist.lastUsedAt)
-	hasRecentLastUsed := !hist.lastUsedAt.IsZero() && age < activeAllocationsWindow
-
-	cooldown := vkSaturationCooldown
-	reason := "ghost-likely (no active conns and lastUsedAt not in active window)"
-	if active > 0 {
-		cooldown = vkActiveAllocationsCooldown
-		reason = fmt.Sprintf("active-now (active=%d/%d, conns still hold slot)", active, cp.capOnLocked(addr))
-	} else if hasRecentLastUsed {
-		cooldown = vkActiveAllocationsCooldown
-		reason = fmt.Sprintf("active-recent (lastUsedAt %s ago)", age.Round(time.Second))
-	}
-
-	cp.applySaturationLocked(slot, addr, cooldown, reason)
-	return cooldown
+	return 0
 }
 
-// applySaturationLocked is the inner state-mutation step shared by
-// markSaturated (which computes a fixed cooldown from current slot
-// state — 11m active or 3m ghost) and MarkInUseSlotsForPathChange
-// (which computes a precise per-slot cooldown based on lastUsedAt +
-// VK allocation lifetime). Caller MUST hold cp.mu.
-func (cp *credPool) applySaturationLocked(slot int, relay string, cooldown time.Duration, reason string) {
-	if relay != "" {
-		log.Printf("credpool: slot %d marked VK-saturated for %s — %s (on %s)",
-			slot, cooldown.Round(time.Second), reason, relay)
-	} else {
-		log.Printf("credpool: slot %d marked VK-saturated for %s — %s",
-			slot, cooldown.Round(time.Second), reason)
-	}
-	h := cp.histPtrLocked(slot, relay)
-	if h.saturationTimer != nil {
-		h.saturationTimer.Stop()
-	}
-	h.saturatedUntil = time.Now().Add(cooldown)
-	h.saturationTimer = time.AfterFunc(cooldown, cp.broadcastSlotAvailable)
-}
-
-// MarkInUseSlotsForPathChange handles a deduplicated network-path transition.
-// For each pool slot that VK
-// almost-certainly still holds allocations for (active>0 OR lastUsedAt
-// within activeAllocationsWindow), mark it saturated proactively — same
-// effect as if a conn had just hit 486 on the slot, but without the wasted
-// allocate attempt + retry burst.
-//
-// Why this helps: without this, after a path change we typically see
-// ~3 conns hit 486 in series on each in-use slot (slot 0 → 486 → mark,
-// slot 1 → 486 → mark, slot 2 → 486 → mark) over ~0.5-1 seconds before
-// credPool routing realises which slots are dead. With pre-emptive
-// marking, conn 0 immediately sees slots 0/1/2 saturated and goes to
-// fresh reserve slots (3/4/5/...) — no 486 burst, no log spam, no
-// CPU/network churn.
-//
-// Slots with active=0 AND lastUsedAt > 10m ago (or never used) are NOT
-// marked — they're either ghost-likely-expired or fresh-never-used, and
-// in both cases VK has no allocations against them. Marking them would
-// waste 11 minutes of an otherwise-fine slot.
-//
-// Why the lifetime is the window: at a path change the dying sessions'
-// deallocates leave through the interface that has just gone — they do not
-// reach the relay, and an allocation that was not given back holds its seat
-// until it expires (600 s). So lastUsedAt + 600 s predicts when such a slot
-// is safe to reuse. 🚫 Not because the relay ignores a deallocate: one that
-// REACHES it frees the seat — one second later (measured 2026-09-21,
-// seatcool.go; the 486s that build 69's wgForceReconnect test drew 0.4–0.8 s
-// behind its Refresh(0) were that second).
+// MarkInUseSlotsForPathChange resets health and briefly settles path transitions.
 func (cp *credPool) MarkInUseSlotsForPathChange() {
 	cp.mu.Lock()
 	cp.pathChangedHealthLocked() // the relay marks were about the old network (credpool_relay.go)
 	cp.mu.Unlock()
-	const vkAllocLifetime = 600 * time.Second
-	// Safety buffer: clock skew + jitter in VK's quota-release task.
-	// If a slot becomes usable a few seconds before this expires the
-	// cost is just one wasted allocate attempt that hits 486 and
-	// re-marks via the existing path — bounded harm.
-	const safetyBuffer = 30 * time.Second
-	// Minimum age of lastUsedAt for "active-recent" classification to
-	// fire. Below this threshold the slot was just-released by a conn
-	// that briefly touched it during the current path-cascade — kernel
-	// error killed the socket within ~ms of acquire, so no TURN
-	// allocate could have completed (round-trip ~50-200ms minimum,
-	// plus VK processing). Without this guard, MarkInUseSlotsForPathChange
-	// fires AFTER the conn-retry-loop has already done acquire→release
-	// cycles on previously-active slots, marking them all active-recent
-	// even though no real VK quota was committed.
-	//
-	// Observed in vpn.wifi.1.log on 2026-05-11 09:05:51: WiFi→LTE
-	// transition fired 3 active-now markings (legitimate) PLUS 3
-	// active-recent markings on slots whose lastUsedAt was 0s ago
-	// (just-released by reconnect-cycle). Result: pool dropped 12→6
-	// fresh instead of expected 12→9. Build 76 fix.
-	const minRealUseAge = 2 * time.Second
-
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
 
 	now := time.Now()
-	// Track which slots got marked so the summary log line below can list
-	// them explicitly. Defense in depth against losing a per-slot log line:
-	// the per-slot lines emitted by applySaturationLocked carry full detail
-	// (cooldown, active count, reason) and are normally what we read; the
-	// list in the summary line is a backup so even if one per-slot line is
-	// missing from the log for any reason, we can still tell which slots
-	// were touched. Observed wifi-lte-wifi.1.log 2026-05-14 19:44:43:
-	// `marked 3 in-use slots` summary count but only 2 per-slot lines (slot
-	// 4's line missing). The actual slot 4 was demonstrably marked
-	// (subsequent "skipping slot 4 (VK-saturated)" lines confirm) — only
-	// the marking log itself was lost.
-	markedSlots := make([]int, 0, cp.size)
-	// live: sessions run on this pool's credentials right now — this event has
-	// something to protect and counts for cascade detection. 🚨 Read from the
-	// record of leases still out (credPool.holders), not from the entries: a
-	// slot the grower refilled under its sessions starts its `active` at the NEW
-	// identity's count, 0, and an entry-by-entry reading answered
-	// "nothing live" with forty sessions up, leaving the cascade detector
-	// unarmed (the field run of 2026-09-18). The per-slot marking below still
-	// reads the entry's own `active`, and rightly: a refilled slot holds a new
-	// identity with no allocation at the relay — nothing there to bench.
 	live := len(cp.holders) > 0
-	for slot := 0; slot < cp.size && slot < len(cp.pool); slot++ {
-		e := cp.pool[slot]
-		// Skip empty/never-filled slots (no creds, no VK state)
-		if e.creds == nil {
-			continue
-		}
-		// The seats are the RELAY's they were created on (relayhist.go): a
-		// slot is marked per relay it holds or held seats on — never by the
-		// relay its connections would dial next (the user's review of
-		// 2026-10-31: with the own relay first again after the path change,
-		// the slot's ten seats on VK's relay went unmarked, and the own relay
-		// dead again, the credential went back to VK into a 486 cascade).
-		for _, relay := range cp.relaysWithHistoryLocked(slot) {
-			// A relay without a quota (the list's host:port:0) holds no seats —
-			// nothing to bench. A history whose relay is not known stands for
-			// the relay the slot dials now.
-			if relay != "" && cp.override.unlimited(relay) {
-				continue
-			}
-			if d := cp.dialNowLocked(slot); relay == "" && d != "" && cp.override.unlimited(d) {
-				continue
-			}
-			h := cp.histLocked(slot, relay)
-			// Skip already-saturated (re-marking is no-op but spams logs)
-			if !h.saturatedUntil.IsZero() && h.saturatedUntil.After(now) {
-				continue
-			}
-			// Skip a relay already in load-from-disk pending state. Its
-			// clock was set by loadFromDisk from a PRIOR session's last use +
-			// credSaturationCooldown — VK's lingering allocations from before
-			// this session are already correctly accounted for. Smart-pause
-			// would re-mark it on the same last use, only extending the wait
-			// by safetyBuffer (~30s) and confusing the log. Trust the clock.
-			//
-			// Observed in vpn.wifi-lte-wifi.3.log on 2026-05-10 23:52: pool
-			// loaded from disk had slots 8/9/11 with lastUsedAt 36s ago →
-			// pending until 23:58:25 (load-cooldown). Smart-pause at 23:52:21
-			// re-marked them saturated until 23:58:56 (~30s later than load-
-			// cooldown's natural expiry). No real harm but no real benefit
-			// either, and it makes the saturation count misleading.
-			if until := cp.clockLocked(slot, relay); !until.IsZero() && until.After(now) {
-				continue
-			}
-			active := e.active
-			if relay != "" {
-				active = cp.seatsOnLocked(slot, relay)
-			}
-
-			// Smart-pause anchor selection:
-			//   active>0  → conns alive right now, refreshes every ~5m, so the
-			//               latest allocation expires no later than now + 600s.
-			//   active=0  → lastUsedAt is when the last seat on the relay was
-			//               given back; VK still holds allocations for the
-			//               remainder of 600s after the last refresh, bounded
-			//               above by lastUsedAt + 600s.
-			var anchor time.Time
-			var reason string
-			if active > 0 {
-				anchor = now
-				reason = fmt.Sprintf("path-change active-now (active=%d/%d, smart-pause)", active, cp.capOnLocked(relay))
-			} else if !h.lastUsedAt.IsZero() &&
-				now.Sub(h.lastUsedAt) > minRealUseAge &&
-				now.Sub(h.lastUsedAt) < activeAllocationsWindow {
-				anchor = h.lastUsedAt
-				age := now.Sub(h.lastUsedAt).Round(time.Second)
-				reason = fmt.Sprintf("path-change active-recent (lastUsedAt %s ago, smart-pause)", age)
-			} else {
-				// Ghost-likely-expired (lastUsedAt > 10m), never-used,
-				// OR just-released-during-this-path-cascade (lastUsedAt
-				// within minRealUseAge — see comment on that constant).
-				continue
-			}
-
-			// remaining = (anchor + vkAllocLifetime + safetyBuffer) - now
-			remaining := vkAllocLifetime - now.Sub(anchor) + safetyBuffer
-			if remaining <= 0 {
-				continue
-			}
-
-			cp.applySaturationLocked(slot, relay, remaining, reason)
-			markedSlots = append(markedSlots, slot)
-		}
-	}
-
-	if len(markedSlots) > 0 {
-		log.Printf("credpool: path-change pre-emptive — marked %d in-use slots %v with smart-pause cooldowns", len(markedSlots), markedSlots)
-	}
 
 	// Adaptive pause-acquire selection. See cascadeDetectionWindow comment
 	// for the full rationale.
@@ -3376,9 +2331,10 @@ func (cp *credPool) armPauseAcquireBroadcastLocked() {
 // os-default during the brief window between physical interfaces).
 //
 // Motivation: vpn.over24h.log 2026-05-13 15:26 outage. Sequence was:
-//   T+0     requiresConnection cellular (Event 1)
-//   T+162ms satisfied iface=other os-default=192.168.102.4 (our TUN!)
-//   T+3.3s  satisfied iface=cellular (Event 3 — real new path)
+//
+//	T+0     requiresConnection cellular (Event 1)
+//	T+162ms satisfied iface=other os-default=192.168.102.4 (our TUN!)
+//	T+3.3s  satisfied iface=cellular (Event 3 — real new path)
 //
 // MarkInUseSlotsForPathChange on Event 1 correctly marked 6 active slots
 // and set pauseAcquireUntil = now + 500ms. By the time Event 2 fired
@@ -3404,38 +2360,7 @@ func (cp *credPool) ExtendPauseAcquireForTransition(d time.Duration) {
 	}
 }
 
-// tryFill is called by the background grower (see Proxy.growCredPool) to
-// fill one empty/stale slot without blocking any caller. Returns true if
-// the slot ended up fresh as a result — either because we filled it, or
-// because someone else had already filled it by the time we looked.
-//
-// Respects cooldown (skip) and in-flight fetches (skip). Like get(), it
-// does NOT hold mu across the VK fetch.
-//
-// abortIfAvailableGTE (0 = disabled, >0 = enabled): checked ONCE, before the
-// fetch — if cp.countAvailableLocked() is already >= this value the fill is
-// skipped (no VK call made, `fetching` never set) and false is returned. Used
-// by the grower during cold start so it does not START a mint the conn-driven
-// fetches in get() have made redundant.
-//
-// 🚨 A FETCH THAT WAS STARTED IS ALWAYS KEPT (2026-09-07). Until then a second
-// checkpoint sat after the fetch and DISCARDED the credential when the
-// conn-driven mints had reached the target during the grower's PoW window
-// (0256116, 2026-05-14: "systematically over-shoots cold-start by 1",
-// vpn.wifi.5/6.log). What that bought was only the maintenance stagger of ONE
-// slot's expiry (2–5 min against a lifetime of hours): a credential sitting
-// in a slot with active=0 makes no allocations, and conns fill compactly, so
-// a fourth slot draws nobody while three have seats — the 486 cascade the
-// cold-start cap in get() guards against is not this. What it cost, measured
-// on 2026-09-07 with the sub-second start (the conn-driven mints are now the
-// fast ones and the grower's the slow one, so the race is the NORMAL cold
-// start, decided by a coin): a paid captcha solve and VK identity thrown
-// away, `maintenance fill skipped/failed` logged about a SUCCESS, and the
-// pool left at 3/12 for the 120–300 s maintenance interval (vpn.srtp.lte.2.log
-// 23:10:30 → slot 3 only at 23:13:56; the Wi-Fi phone kept its grower's cred
-// because it landed third). So after a cold start the pool may read 4/12
-// where it used to read 3/12 — in exactly that race, and maintenance goes on
-// from four.
+// tryFill fetches one missing or expiring credential while preventing overlapping fetches.
 func (cp *credPool) tryFill(slot int, allowCaptchaBlock bool, abortIfAvailableGTE int) bool {
 	cp.mu.Lock()
 	if slot < 0 || slot >= cp.size {
@@ -3449,15 +2374,7 @@ func (cp *credPool) tryFill(slot int, allowCaptchaBlock bool, abortIfAvailableGT
 		cp.mu.Unlock()
 		return true
 	}
-	// Defense in depth: pickSlotToFill already filters pending slots
-	// for the background grower, but a direct tryFill caller (none in
-	// the current code, but harmless future-proofing) shouldn't waste
-	// a VK fetch on a slot that's about to become usable on its own.
-	if cp.pendingLocked(slot) {
-		cp.mu.Unlock()
-		return true // pending counts as "filled" — the cred is there, just not yet usable
-	}
-	if time.Now().Before(cp.pool[slot].cooldownUntil) || cp.pool[slot].fetching {
+	if cp.pool[slot].fetching {
 		cp.mu.Unlock()
 		return false
 	}
@@ -3465,12 +2382,6 @@ func (cp *credPool) tryFill(slot int, allowCaptchaBlock bool, abortIfAvailableGT
 	// have already pushed available past the cold-start target, this
 	// fill is redundant.
 	if abortIfAvailableGTE > 0 && cp.countAvailableLocked() >= abortIfAvailableGTE {
-		cp.mu.Unlock()
-		return false
-	}
-	// The relay-refusal breaker: the grower mints nothing during the pause
-	// either (quotabreaker.go); get()'s park line says why, this stays quiet.
-	if _, paused := cp.mintPausedLocked(time.Now()); paused {
 		cp.mu.Unlock()
 		return false
 	}
@@ -3489,11 +2400,6 @@ func (cp *credPool) tryFill(slot int, allowCaptchaBlock bool, abortIfAvailableGT
 
 	cp.mu.Lock()
 	if !cp.ownsLocked(slot, gen) {
-		// The slot changed hands while we fetched — a Resume reset the pool
-		// (invalidate), invalidateEntry cleared it, or a later claim took it.
-		// Whatever sits there now (a conn-filled cred with its active count, a
-		// fetch in flight) is not ours: no write, no `fetching` reset, no
-		// cooldown. A credential we did get is kept in an empty slot if any.
 		if err != nil {
 			cp.mu.Unlock()
 			log.Printf("credpool: background fill slot %d failed (%v) after the slot changed hands — nothing recorded", slot, err)
@@ -3541,9 +2447,8 @@ func (cp *credPool) tryFill(slot int, allowCaptchaBlock bool, abortIfAvailableGT
 		cp.broadcastSlotAvailable()
 		return true
 	}
-	cp.pool[slot].cooldownUntil = time.Now().Add(cp.cooldown)
 	cp.mu.Unlock()
-	log.Printf("credpool: background fill slot %d failed (%v), cooldown %s", slot, err, cp.cooldown)
+	log.Printf("credpool: background fill slot %d failed: %v", slot, err)
 	return false
 }
 
@@ -3615,34 +2520,19 @@ func (cp *credPool) placeIntoEmptySlotLocked(addr string, creds *TURNCreds, acti
 	return -1, "no slot is empty"
 }
 
-// pickSlotToFill returns the index of a slot that is eligible for the
-// background grower to attempt (empty or stale, not fetching, not on
-// cooldown, not pending). Returns -1 if nothing to do right now.
-//
-// Pending slots (loaded from disk but waiting on saturation cooldown)
-// are NOT picked: a fresh fetch would overwrite a cred that's about
-// to become available on its own, wasting a VK API call (and risking
-// captcha) for no benefit. Once the cooldown passes, the pending slot
-// transitions to fresh and pickSlotToFill skips it as already-good.
+// pickSlotToFill selects the first missing or expiring slot without an active fetch.
 func (cp *credPool) pickSlotToFill() int {
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
 	for len(cp.pool) < cp.size {
 		cp.pool = append(cp.pool, credPoolEntry{})
 	}
-	now := time.Now()
 	for i := 0; i < cp.size; i++ {
 		e := cp.pool[i]
 		if cp.isFreshLocked(i) {
 			continue // fresh (cred not yet near expiry)
 		}
-		if cp.pendingLocked(i) {
-			continue // loaded from disk, waiting on saturation cooldown
-		}
 		if e.fetching {
-			continue
-		}
-		if now.Before(e.cooldownUntil) {
 			continue
 		}
 		return i
@@ -3708,23 +2598,6 @@ func (cp *credPool) invalidateEntry(slot int, creds *TURNCreds) {
 	}
 }
 
-// broadcastSlotAvailable wakes every conn currently parked in
-// runConnection's retry select on slotAvailableChannel(). Called from
-// every pool mutation that can transition a slot toward usable: a fresh
-// cred lands in a slot (seedSlot, tryFill success, get's Phase 2 fetch),
-// a conn release frees per-slot capacity, or a saturation cooldown
-// expires (via markSaturated's AfterFunc). The cooldown-expiry hook
-// matters during 486-cascades: parked conns in their long randomised
-// dormancy would otherwise miss the moment the slot becomes usable
-// again and waste minutes sleeping past it.
-//
-// Implementation: close the current channel and swap in a new one. The
-// close acts as a fan-out wake-up — all waiting conns observe the same
-// closed channel and proceed simultaneously. A buffered single-slot
-// channel would only wake one waiter, defeating the broadcast.
-//
-// Spurious calls are harmless: a conn that wakes up only to find no
-// usable slot will fail get() again and re-park on the new channel.
 func (cp *credPool) broadcastSlotAvailable() {
 	cp.mu.Lock()
 	oldCh := cp.slotAvailableCh
@@ -3799,15 +2672,7 @@ func (cp *credPool) distinctRelays() int {
 	return len(seen)
 }
 
-// isFreshLocked assumes cp.mu is held. A slot is fresh iff it holds creds
-// that will still be valid on the TURN server credExpiryBuffer from now (see
-// parseCredExpiry for the expiry source) AND VK's clock on the relay the
-// slot's connections dial NOW (dialNowLocked) has run out — the clock is the
-// relay's: the seats the credential may still hold at THAT relay after the
-// last session (relayhist.go; a relay without a quota has none). A hand-out
-// asks the same of the relay picked for the connection (freshOnLocked);
-// every readiness question about a live slot goes through this, pendingLocked
-// or availableLocked, never through the entry alone (the scan test).
+// isFreshLocked checks credential validity. Caller holds cp.mu.
 func (cp *credPool) isFreshLocked(slot int) bool {
 	if slot < 0 || slot >= len(cp.pool) {
 		return false
@@ -3815,32 +2680,6 @@ func (cp *credPool) isFreshLocked(slot int) bool {
 	return cp.freshOnLocked(slot, cp.dialNowLocked(slot))
 }
 
-// pendingLocked assumes cp.mu is held: the slot holds a valid credential that
-// waits for VK's clock on the relay its connections dial now. get()'s Phase 2,
-// tryFill and pickSlotToFill leave such a slot alone — we'd rather wait ~10
-// min for the prior session's allocations to expire on VK's side than spend
-// 10-30 min chasing a fresh cred through PoW on a hostile day; once the
-// clock passes the slot is fresh on its own. On a relay without a quota, or
-// one the credential never held seats on, the same entry is fresh now
-// (isFreshLocked), not pending.
-func (cp *credPool) pendingLocked(slot int) bool {
-	if slot < 0 || slot >= len(cp.pool) || !entryCredValid(cp.pool[slot]) {
-		return false
-	}
-	return time.Now().Before(cp.clockLocked(slot, cp.dialNowLocked(slot)))
-}
-
-// availableLocked assumes cp.mu is held: the slot can hand out new TURN
-// allocations RIGHT NOW — fresh AND no active VK-side saturation cooldown.
-// Used by the StatsView "available" count so the user sees the actual
-// usable-slot count, not a misleading total when all slots are saturated.
-// isFreshLocked alone does NOT check saturatedUntil — it was designed for
-// cred-validity checks, not runtime usability.
-//
-// Example: build 72 on 2026-05-10 23:03 had pool=8 with all 8 slots
-// holding fresh creds (fresh for all) but all 8 also marked VK-saturated by
-// smart-pause. UI showed "Pool 8/8/8" misleadingly when reality was 0
-// usable. This predicate would have correctly reported 0.
 func (cp *credPool) availableLocked(slot int) bool {
 	if !cp.isFreshLocked(slot) {
 		return false
@@ -3900,38 +2739,6 @@ func entryCredValid(e credPoolEntry) bool {
 	return time.Now().Add(credExpiryBuffer).Before(exp)
 }
 
-// entryIsFresh is the slot-agnostic predicate behind isFreshLocked — the
-// entry's own view, on a relay with a quota. Never asked of a live slot
-// directly: the slot may dial a relay without a quota (the scan test).
-//
-// "Fresh" means the cred is usable RIGHT NOW: it has a valid VK-side
-// expiry far enough in the future, and any saturation cooldown from
-// a prior session has elapsed. Pending-but-loaded creds (creds != nil
-// AND availableAt is in the future) are NOT fresh — get() will skip
-// them so conns don't 486 against still-live allocations.
-func entryIsFresh(e credPoolEntry) bool {
-	if !entryCredValid(e) {
-		return false
-	}
-	if !e.availableAt.IsZero() && time.Now().Before(e.availableAt) {
-		return false
-	}
-	return true
-}
-
-// entryIsPending is the slot-agnostic predicate behind pendingLocked: the
-// entry holds a cred that's load-from-disk-pending — present, with a valid
-// expiry, but not yet past its saturation cooldown.
-func entryIsPending(e credPoolEntry) bool {
-	if e.creds == nil {
-		return false
-	}
-	if e.availableAt.IsZero() || !time.Now().Before(e.availableAt) {
-		return false
-	}
-	return entryCredValid(e)
-}
-
 // countFreshLocked assumes cp.mu is held.
 func (cp *credPool) countFreshLocked() int {
 	n := 0
@@ -3956,32 +2763,6 @@ func (cp *credPool) countAvailableLocked() int {
 	return n
 }
 
-// countWithUnexpiredCredsLocked assumes cp.mu is held. Counts slots whose
-//
-// ⚠️ NOT "usable" — this is the Stats UI's MIDDLE number, deliberately the
-// weakest predicate of the three: it ignores both the per-relay cooldown and
-// saturation. Do not use it to decide whether a cred can be handed out; that is
-// isFreshLocked (countFreshLocked) or availableLocked (countAvailableLocked).
-// It was called countWithUsableCreds until 2026-07-29, and the cold-start cap
-// above had been reading it as "usable" ever since build 150.
-//
-// cred has NOT crossed the credExpiryBuffer threshold — i.e. slots that
-// will (or could) hand out new allocations once any current saturation
-// or load-pending state passes. Excludes:
-//   - empty slots (no cred)
-//   - slots with expired / expiring-within-buffer creds (these are
-//     effectively dead until background grower fetches a fresh cred)
-//   - slots with unparseable cred username (treated as dead)
-//
-// Includes saturated and load-pending slots — those will recover on
-// their own.
-//
-// Used by the StatsView "Pool" middle number so the user sees how many
-// slots have a viable cred backing them, not just any cred. Replaces
-// countWithCredsLocked usage in snapshotSize since 2026-05-12 build 82
-// — the prior "any cred" semantic was misleading when background
-// grower is stuck (e.g. PoW rate-limited) and slots hold stale creds
-// that can't be refreshed.
 func (cp *credPool) countWithUnexpiredCredsLocked() int {
 	n := 0
 	now := time.Now()
@@ -4001,26 +2782,7 @@ func (cp *credPool) countWithUnexpiredCredsLocked() int {
 	return n
 }
 
-// logFreshTransitionsLocked compares per-slot isFreshLocked against the
-// snapshot stored in freshLastTick from the previous runPeriodicSave
-// tick. For each slot that just transitioned fresh→not-fresh, emits a
-// log line with the inferred reason. Then refreshes freshLastTick for
-// the next tick. Caller MUST hold cp.mu.
-//
-// Reason inference (priority order):
-//   - "cred removed" — entry has no creds (e.g. background grower
-//     cleared the slot)
-//   - "load-pending" — availableAt is in the future (load-cooldown)
-//   - "unparseable cred expiry" — parseCredExpiry failed
-//   - "expiring within Xm buffer" — cred expiry is closer than
-//     credExpiryBuffer (typically 30 min)
-//   - "unknown" — fallthrough, none of the above (shouldn't happen
-//     in practice)
-//
-// Note: smart-pause / 486 saturation does NOT trigger this log line
-// because isFreshLocked doesn't check saturatedUntil — only
-// availableLocked does. Saturation events have their own log line
-// from markSaturated/applySaturationLocked.
+// logFreshTransitionsLocked reports credential validity changes between saves.
 func (cp *credPool) logFreshTransitionsLocked() {
 	// Resize snapshot on first run or after pool growth. On first run
 	// we just snapshot current state without logging — there's no
@@ -4038,14 +2800,10 @@ func (cp *credPool) logFreshTransitionsLocked() {
 		nowFresh := cp.isFreshLocked(slot)
 		if wasFresh && !nowFresh {
 			e := cp.pool[slot]
-			until := cp.clockLocked(slot, cp.dialNowLocked(slot))
 			reason := "unknown"
 			switch {
 			case e.creds == nil:
 				reason = "cred removed"
-			case !until.IsZero() && now.Before(until):
-				reason = fmt.Sprintf("moved to load-pending state (usable in %s)",
-					time.Until(until).Round(time.Second))
 			default:
 				if exp, ok := parseCredExpiry(e.creds.Username); !ok {
 					reason = "unparseable cred expiry"
@@ -4057,22 +2815,11 @@ func (cp *credPool) logFreshTransitionsLocked() {
 			}
 			log.Printf("credpool: slot %d transitioned out of fresh — %s", slot, reason)
 		} else if !wasFresh && nowFresh {
-			// Symmetric to the fresh→not-fresh branch: log when a slot
-			// silently becomes fresh. Most common cause: load-from-disk
-			// pending state elapsing (availableAt crossed). Also covers
-			// cases where seedSlot / background-fill produced a fresh
-			// cred between ticks (those paths log their own success
-			// line, so this is mildly redundant for them — accepted as
-			// "all transitions visible" beats "guess from absence").
 			e := cp.pool[slot]
-			until := cp.histLocked(slot, cp.dialNowLocked(slot)).availableAt
 			reason := "unknown"
 			switch {
 			case e.creds == nil:
 				reason = "creds appeared (race; check seedSlot/background fill log)"
-			case !until.IsZero() && !now.Before(until):
-				elapsed := now.Sub(until).Round(time.Second)
-				reason = fmt.Sprintf("load-cooldown elapsed (became usable %s ago)", elapsed)
 			default:
 				reason = "creds became valid (seeded or background-filled)"
 			}
@@ -4108,6 +2855,7 @@ func (cp *credPool) countWithCredsLocked() int {
 //   - messages.getCallPreview / getAnonymCallToken (VK Calls free path): the 95x
 //     block — 951 "Call not found", 954 "Invalid join link". Caught here BEFORE
 //     the legacy fallback so we never solve a captcha for a doomed call/link.
+//
 // error_msg is passed through as the user-facing Message.
 func fatalCallError(resp map[string]interface{}) *CallUnavailableError {
 	errObj, ok := resp["error"].(map[string]interface{})

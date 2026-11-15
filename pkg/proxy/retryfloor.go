@@ -11,9 +11,8 @@ import (
 // THE RETRY FLOOR — what bounds a connection's retry rate while the NETWORK
 // itself is failing.
 //
-// runConnection's two waits after a failed session (the 2–7 s delay, the
-// 30–60 s dormancy) both return at once on the pool's slot-available
-// broadcast, and the dormancy's wake resets the failure counter. That is
+// runConnection's jittered retry wait may end early on the pool's
+// slot-available broadcast. That is
 // right for what the broadcast was built for — a connection parked for a
 // slot wakes the moment one opens — and wrong when the failure had nothing to
 // do with slots: a failing connection's release() broadcasts whenever its slot
@@ -28,8 +27,8 @@ import (
 //
 // The floor: after a NETWORK-CLASS failure a slot-available wake is honoured no
 // sooner than floor(k) after that failure, k = this connection's consecutive
-// network-class failures — 250 ms, 500 ms, 1 s … capped at 8 s. The timers are
-// untouched (they are ≥ 2 s already) and a wake does not reset k.
+// network-class failures — 250 ms, 500 ms, 1 s … capped at 8 s. The jittered timers are
+// unchanged and a wake does not reset k.
 //
 // 🚨 What it must NOT cost: the recovery from a silent dead zone (no path
 // event — iOS keeps reporting the interface satisfied). There the dormant
@@ -154,7 +153,10 @@ func (s *sessionUps) lastAndWake() (time.Time, <-chan struct{}) {
 }
 
 // noteSessionUp is called where a session function logs "session established".
-func (p *Proxy) noteSessionUp(connIdx int) { p.ups.note(connIdx, time.Now()) }
+func (p *Proxy) noteSessionUp(connIdx int) {
+	p.ups.note(connIdx, time.Now())
+	p.reportRetry(nil, 0)
+}
 
 // retryWake says what ended a retry wait.
 type retryWake int
