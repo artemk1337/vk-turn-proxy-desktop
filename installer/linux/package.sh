@@ -26,9 +26,11 @@ for arch in amd64 arm64; do
     install -m 755 "${bin_dir}/${arch}/vk-turn-proxy-console" "$portable/vk-turn-proxy-console"
     install -m 755 "${bin_dir}/${arch}/vk-turn-proxy-desktop" "$portable/vk-turn-proxy-desktop"
     install -m 644 assets/logo-256.png "$portable/vk-turn-proxy-desktop.png"
+    install -m 644 docs/*.md "$portable/docs/"
+    install -m 644 docs/*.md "$package/usr/share/doc/vk-turn-proxy-desktop/docs/"
     install -m 644 docs/images/main-window-*.png "$portable/docs/images/"
     install -m 644 docs/images/main-window-*.png "$package/usr/share/doc/vk-turn-proxy-desktop/docs/images/"
-    for file in README.md README.ru.md LICENSE NOTICE.md; do
+    for file in README.md README.en.md README.ru.md LICENSE NOTICE.md; do
         install -m 644 "$file" "$portable/$file"
     done
 
@@ -39,7 +41,7 @@ for arch in amd64 arm64; do
     ln -s ../lib/vk-turn-proxy-desktop/vk-turn-proxy-console "$package/usr/bin/vk-turn-proxy-console"
     install -m 644 installer/linux/vk-turn-proxy-desktop.desktop "$package/usr/share/applications/io.github.artemk1337.vkturnproxy.desktop"
     install -m 644 "$portable/vk-turn-proxy-desktop.png" "$package/usr/share/icons/hicolor/256x256/apps/"
-    for file in README.md README.ru.md LICENSE NOTICE.md; do
+    for file in README.md README.en.md README.ru.md LICENSE NOTICE.md; do
         install -m 644 "$file" "$package/usr/share/doc/vk-turn-proxy-desktop/$file"
     done
 

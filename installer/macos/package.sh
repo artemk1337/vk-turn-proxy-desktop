@@ -73,10 +73,12 @@ for arch in amd64 arm64; do
 EOF
 
     install -m 644 "$work/AppIcon.icns" "$resources/AppIcon.icns"
-    for file in README.md README.ru.md LICENSE NOTICE.md; do
+    for file in README.md README.en.md README.ru.md LICENSE NOTICE.md; do
         install -m 644 "$file" "$package/$file"
         install -m 644 "$file" "$resources/$file"
     done
+    install -m 644 docs/*.md "$package/docs/"
+    install -m 644 docs/*.md "$resources/docs/"
     for language in en ru; do
         image="docs/images/main-window-${language}.png"
         install -m 644 "$image" "$package/$image"

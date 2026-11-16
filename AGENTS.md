@@ -23,10 +23,10 @@ Routing policies are per-profile snapshots. Missing routing settings preserve fu
 
 ## Documentation and releases
 
-- Keep `README.md` in English, with links to separate `README.<language>.md` translations. Each translation links back to English.
+- Keep `README.md` in Russian and `README.en.md` in English, with language links on the first line before the application title. Keep both concise, with installation and connection instructions. Put detailed usage and build documentation in linked localized files under `docs/`. Keep `README.ru.md` as a compatibility link to the main README.
 - Explain supported profile formats, installer and portable setup, GUI and terminal workflows. Keep the wording direct and practical, with upstream attribution.
 - Describe imported profiles by their data format in documentation and UI. Keep upstream attribution in Related projects and NOTICE.md.
-- Release notes contain only a concise list of changes. Keep setup instructions and build details in the README.
+- Release notes contain only a concise list of changes. Keep setup instructions in the README and build details in `docs/build.<language>.md`.
 - Build Windows and Linux releases locally in Docker. Build macOS application ZIPs natively with the Apple SDK. Publish all platforms for x64 and ARM64 with checksums.
 - Use `assets/logo.png` as the canonical logo for frontend branding and platform application icons. Include localized main-window screenshots in both READMEs and their release packages.
 - Run console, profile, preferences and transport tests. Verify Windows startup, autostart lifecycle, installer install/uninstall, both languages and themes, and connection progress before publishing.
