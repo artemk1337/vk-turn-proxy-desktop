@@ -6,6 +6,10 @@ package main
 
 import (
 	"fmt"
+	"log"
+	"strings"
+	"time"
+
 	"golang.zx2c4.com/wireguard/tun"
 )
 
@@ -27,11 +31,25 @@ func openTUN(name string, mtu int) (tun.Device, string, error) {
 }
 
 func readDefaultRoute() (gateway, bool) {
-	out, err := runCmd(windowsDefaultRouteCommand())
+	command := windowsDefaultRouteCommand()
+	out, err := runCmd(command)
 	if err != nil {
+		cause := strings.TrimPrefix(err.Error(), strings.Join(command, " ")+": ")
+		issue := fmt.Sprintf("PowerShell Get-NetRoute query failed: %q; output=%q", windowsRouteDiagnosticText(cause), windowsRouteDiagnosticText(out))
+		if message := windowsGatewayQueryDiagnostics.message(issue, time.Now()); message != "" {
+			log.Print(message)
+		}
 		return gateway{}, false
 	}
-	return parseWindowsDefaultRoute(out)
+	gw, err := parseWindowsDefaultRouteDetail(out)
+	issue := ""
+	if err != nil {
+		issue = fmt.Sprintf("%s; output=%q", err, windowsRouteDiagnosticText(out))
+	}
+	if message := windowsGatewayQueryDiagnostics.message(issue, time.Now()); message != "" {
+		log.Print(message)
+	}
+	return gw, err == nil
 }
 
 func sshPeers() []string { return nil }

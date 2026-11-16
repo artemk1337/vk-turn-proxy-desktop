@@ -129,14 +129,29 @@ func (windowsCmds) hostRouteQuery(string) []string { return nil }
 func (windowsCmds) destroy(string) []string        { return nil }
 
 func parseWindowsDefaultRoute(out string) (gateway, bool) {
+	gw, err := parseWindowsDefaultRouteDetail(out)
+	return gw, err == nil
+}
+
+func parseWindowsDefaultRouteDetail(out string) (gateway, error) {
+	out = strings.TrimSpace(out)
+	if out == "" || out == "null" {
+		return gateway{}, fmt.Errorf("Get-NetRoute returned no IPv4 default route matching State=Alive")
+	}
 	var route struct {
 		NextHop        string
 		InterfaceAlias string
 	}
-	if json.Unmarshal([]byte(strings.TrimSpace(out)), &route) != nil || net.ParseIP(route.NextHop) == nil || route.InterfaceAlias == "" {
-		return gateway{}, false
+	if err := json.Unmarshal([]byte(out), &route); err != nil {
+		return gateway{}, fmt.Errorf("cannot parse Get-NetRoute JSON: %w", err)
 	}
-	return gateway{IP: route.NextHop, Iface: route.InterfaceAlias}, true
+	if net.ParseIP(route.NextHop) == nil {
+		return gateway{}, fmt.Errorf("Get-NetRoute returned invalid NextHop %q", windowsRouteDiagnosticText(route.NextHop))
+	}
+	if route.InterfaceAlias == "" {
+		return gateway{}, fmt.Errorf("Get-NetRoute returned an empty InterfaceAlias")
+	}
+	return gateway{IP: route.NextHop, Iface: route.InterfaceAlias}, nil
 }
 
 func windowsDefaultRouteCommand() []string {

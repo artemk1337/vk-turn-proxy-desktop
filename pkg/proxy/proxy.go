@@ -2332,7 +2332,9 @@ func (p *Proxy) runDTLSSession(sessCtx context.Context, linkID string, readyCh c
 
 	// DTLS handshake — packets go through conn1 → conn2 → TURN relay → peer
 	dtlsStart := time.Now()
+	finishHandshake := p.traceTransportStage(connCtx, connIdx, turnAddr, "DTLS handshake to "+p.peer.String(), creds)
 	dtlsConn, err := dialDTLS(connCtx, conn1, p.peer)
+	finishHandshake(err)
 	if err != nil {
 		connCancel()
 		select {
@@ -3282,19 +3284,24 @@ func addrFamilyFor(peer *net.UDPAddr) turn.RequestedAddressFamily {
 // conn2's deadline is reset before returning so it can be reused.
 func (p *Proxy) runTURN(ctx context.Context, turnAddr string, creds *TURNCreds, conn2 net.PacketConn, connIdx int, slotIdx int, gave *gaveBack) error {
 	attempt := time.Now() // when this relay attempt began — the relay health's window (relayhealth.go)
+	finishResolve := p.traceTransportStage(ctx, connIdx, turnAddr, "relay address resolution", creds)
 	turnUDPAddr, err := net.ResolveUDPAddr("udp", turnAddr)
+	finishResolve(err)
 	if err != nil {
 		return fmt.Errorf("resolve TURN: %w", err)
 	}
 
 	// Connect to TURN server
 	var turnConn net.PacketConn
+	finishSocket := p.traceTransportStage(ctx, connIdx, turnAddr, "control socket", creds)
 	if p.config.UseUDP {
 		if err := beforeDial(udpNetworkOf(turnUDPAddr), turnUDPAddr.String()); err != nil {
+			finishSocket(err)
 			return p.relayUnanswered(connIdx, slotIdx, creds, turnAddr, attempt, fmt.Errorf("dial TURN UDP: %w", err))
 		}
 		udpConn, err := net.DialUDP("udp", nil, turnUDPAddr)
 		if err != nil {
+			finishSocket(err)
 			return p.relayUnanswered(connIdx, slotIdx, creds, turnAddr, attempt, fmt.Errorf("dial TURN UDP: %w", err))
 		}
 		defer udpConn.Close()
@@ -3305,6 +3312,7 @@ func (p *Proxy) runTURN(ctx context.Context, turnAddr string, creds *TURNCreds, 
 		d := net.Dialer{Control: dialControl}
 		tcpConn, err := d.DialContext(tcpCtx, "tcp", turnAddr)
 		if err != nil {
+			finishSocket(err)
 			return p.relayUnanswered(connIdx, slotIdx, creds, turnAddr, attempt, fmt.Errorf("dial TURN TCP: %w", err))
 		}
 		defer tcpConn.Close()
@@ -3313,6 +3321,11 @@ func (p *Proxy) runTURN(ctx context.Context, turnAddr string, creds *TURNCreds, 
 		p.sockStats.register(connIdx, tcpConn)
 		defer p.sockStats.unregister(connIdx)
 		turnConn = turn.NewSTUNConn(tcpConn)
+	}
+
+	finishSocket(nil)
+	if connIdx == 0 {
+		log.Printf("proxy: [conn %d] TURN control socket local=%s relay=%s", connIdx, turnConn.LocalAddr(), turnAddr)
 	}
 
 	// Determine the relay address family from the peer (see addrFamilyFor).
@@ -3328,7 +3341,9 @@ func (p *Proxy) runTURN(ctx context.Context, turnAddr string, creds *TURNCreds, 
 		LoggerFactory:          &turnLoggerFactory{proxy: p, slot: slotIdx, life: gave.lifeOf()},
 	}
 
+	finishClient := p.traceTransportStage(ctx, connIdx, turnAddr, "TURN client initialization", creds)
 	client, err := turn.NewClient(cfg)
+	finishClient(err)
 	if err != nil {
 		return fmt.Errorf("TURN client: %w", err)
 	}
@@ -3336,14 +3351,19 @@ func (p *Proxy) runTURN(ctx context.Context, turnAddr string, creds *TURNCreds, 
 	// joined behind the client's Close, which ends a pending question.
 	defer func() { client.Close(); gave.lifeOf().wait() }()
 
-	if err = client.Listen(); err != nil {
+	finishListen := p.traceTransportStage(ctx, connIdx, turnAddr, "TURN response listener", creds)
+	err = client.Listen()
+	finishListen(err)
+	if err != nil {
 		return fmt.Errorf("TURN listen: %w", err)
 	}
 
 	allocStart := time.Now()
 	gave.lifeOf().fresh()
 	p.dealloc.started.Add(1)
+	finishAllocate := p.traceTransportStage(ctx, connIdx, turnAddr, "TURN allocation", creds)
 	relayConn, err := client.Allocate()
+	finishAllocate(err)
 	if err != nil {
 		return p.relayUnanswered(connIdx, slotIdx, creds, turnAddr, attempt, fmt.Errorf("TURN allocate: %w", err))
 	}
@@ -5504,14 +5524,17 @@ func (p *Proxy) setupSRTPSession(ctx context.Context, turnAddr string, creds *TU
 	// in turn.NewSTUNConn (TCP-control). Mirrors tools/turn_srtp_test
 	// transport plumbing.
 	var ctlConn net.PacketConn
+	finishSocket := p.traceTransportStage(ctx, connIdx, turnAddr, "control socket", creds)
 	if p.config.UseUDP {
 		// Unconnected: pion writes to the relay itself, so the hook is asked
 		// here, about the relay, before the socket exists.
 		if err := beforeDialUDP(turnAddr); err != nil {
+			finishSocket(err)
 			return nil, p.relayUnanswered(connIdx, credSlot, creds, turnAddr, attempt, fmt.Errorf("udp to relay: %w", err))
 		}
 		uc, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
 		if err != nil {
+			finishSocket(err)
 			return nil, fmt.Errorf("local udp listen: %w", err)
 		}
 		ctlConn = uc
@@ -5519,6 +5542,7 @@ func (p *Proxy) setupSRTPSession(ctx context.Context, turnAddr string, creds *TU
 		dialer := net.Dialer{Timeout: 5 * time.Second, Control: dialControl}
 		tcp, err := dialer.Dial("tcp", turnAddr)
 		if err != nil {
+			finishSocket(err)
 			return nil, p.relayUnanswered(connIdx, credSlot, creds, turnAddr, attempt, fmt.Errorf("dial tcp to relay: %w", err))
 		}
 		// 🚨 THE SECOND DIAL SITE, AND THE ONE THAT MATTERS. Build 233 registered
@@ -5532,6 +5556,11 @@ func (p *Proxy) setupSRTPSession(ctx context.Context, turnAddr string, creds *TU
 		ctlConn = turn.NewSTUNConn(tcp)
 	}
 
+	finishSocket(nil)
+	if connIdx == 0 {
+		log.Printf("proxy: [conn %d] TURN control socket local=%s relay=%s", connIdx, ctlConn.LocalAddr(), turnAddr)
+	}
+	finishClient := p.traceTransportStage(ctx, connIdx, turnAddr, "TURN client initialization", creds)
 	tc, err := turn.NewClient(&turn.ClientConfig{
 		TURNServerAddr: turnAddr,
 		Conn:           ctlConn,
@@ -5546,11 +5575,15 @@ func (p *Proxy) setupSRTPSession(ctx context.Context, turnAddr string, creds *TU
 		// IPv6 peer (e.g. a DNS name resolving to AAAA) — issue #39.
 		RequestedAddressFamily: addrFamilyFor(p.peer),
 	})
+	finishClient(err)
 	if err != nil {
 		_ = ctlConn.Close()
 		return nil, fmt.Errorf("turn.NewClient: %w", err)
 	}
-	if err := tc.Listen(); err != nil {
+	finishListen := p.traceTransportStage(ctx, connIdx, turnAddr, "TURN response listener", creds)
+	err = tc.Listen()
+	finishListen(err)
+	if err != nil {
 		tc.Close()
 		_ = ctlConn.Close()
 		return nil, fmt.Errorf("turn listen: %w", err)
@@ -5559,7 +5592,9 @@ func (p *Proxy) setupSRTPSession(ctx context.Context, turnAddr string, creds *TU
 	allocStart := time.Now()
 	gave.lifeOf().fresh()
 	p.dealloc.started.Add(1)
+	finishAllocate := p.traceTransportStage(ctx, connIdx, turnAddr, "TURN allocation", creds)
 	relayConn, err := tc.Allocate()
+	finishAllocate(err)
 	if err != nil {
 		tc.Close()
 		_ = ctlConn.Close()
@@ -5627,7 +5662,10 @@ func (p *Proxy) setupSRTPSession(ctx context.Context, turnAddr string, creds *TU
 		gave.lifeOf().wait() // nothing of this allocation's is left asking the relay — outofreach.go
 		_ = ctlConn.Close()
 	}
-	if err := tc.CreatePermission(p.peer); err != nil {
+	finishPermission := p.traceTransportStage(ctx, connIdx, turnAddr, "TURN permission for "+p.peer.String(), creds)
+	err = tc.CreatePermission(p.peer)
+	finishPermission(err)
+	if err != nil {
 		abortSetup()
 		return nil, fmt.Errorf("turn create permission: %w", err)
 	}
@@ -5635,7 +5673,9 @@ func (p *Proxy) setupSRTPSession(ctx context.Context, turnAddr string, creds *TU
 		connIdx, relayConn.LocalAddr(), allocDur.Milliseconds(), ctlConn.LocalAddr())
 
 	hsCtx, hsCancel := context.WithTimeout(ctx, srtpwrap.HandshakeTimeout)
+	finishHandshake := p.traceTransportStage(hsCtx, connIdx, turnAddr, "SRTP handshake to "+p.peer.String(), creds)
 	srtpConn, err := srtpwrap.Client(hsCtx, relayConn, p.peer, &p.rtpChPeak)
+	finishHandshake(err)
 	hsCancel()
 	if err != nil {
 		abortSetup()

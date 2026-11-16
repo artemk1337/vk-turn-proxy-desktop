@@ -585,6 +585,19 @@ func (c *console) prePin() {
 
 func (c *console) startProxy() error {
 	st := c.st
+	transportSource := "profile"
+	if c.o.set["turn-transport"] {
+		transportSource = "-turn-transport override"
+	}
+	tunnelTransport := "direct"
+	if st.UseDTLS {
+		tunnelTransport = "DTLS"
+	}
+	if st.UseSrtp {
+		tunnelTransport = "SRTP"
+	}
+	log.Printf("connection: TURN transport=%s (source=%s), tunnel transport=%s, channels=%d, mtu=%d",
+		transportName(st.UseUDP), transportSource, tunnelTransport, st.NumConns, st.MTU)
 	proxy.SetForceLegacyCaptcha(st.ForceLegacyCaptcha)
 	if st.UplinkPaceKiB > 0 {
 		proxy.SetUplinkPace(st.UplinkPaceKiB, 16) // 16 KiB: the app's burst (UplinkPace.burstKiB)
@@ -784,6 +797,12 @@ func (c *console) switchDefaultRoute(ctx context.Context) (bool, error) {
 //     path the user asked to block.
 //   - The DNS, then the line that says the default route is in the tunnel.
 func (c *console) activate(cmds netCmds, run func([]string) (string, error), active func() int) error {
+	c.pin.mu.Lock()
+	hasGateway := c.pin.hasGW
+	c.pin.mu.Unlock()
+	if !hasGateway {
+		log.Printf("routing: physical IPv4 gateway is unknown while activating tunnel routes; VK/TURN host routes are pending and upstream traffic may enter the tunnel")
+	}
 	undo := quiet(run)
 	for _, r := range cmds.splitRoutes(c.tun) {
 		if err := c.j.add(undoStep{Key: "route split " + r.key, Argv: r.del}); err != nil {
