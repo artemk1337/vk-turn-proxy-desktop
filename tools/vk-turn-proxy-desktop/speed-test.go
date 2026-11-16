@@ -31,15 +31,21 @@ var speedTestServers = []SpeedTestServer{
 }
 
 type SpeedTestState struct {
-	Servers      []SpeedTestServer `json:"servers"`
-	Phase        string            `json:"phase"`
-	Running      bool              `json:"running"`
-	ServerID     string            `json:"serverID"`
-	LatencyMs    float64           `json:"latencyMs"`
-	DownloadMbps float64           `json:"downloadMbps"`
-	UploadMbps   float64           `json:"uploadMbps"`
-	Error        string            `json:"error"`
-	FinishedAt   string            `json:"finishedAt"`
+	Servers           []SpeedTestServer `json:"servers"`
+	Phase             string            `json:"phase"`
+	Running           bool              `json:"running"`
+	ServerID          string            `json:"serverID"`
+	LatencyMs         float64           `json:"latencyMs"`
+	DownloadMbps      float64           `json:"downloadMbps"`
+	UploadMbps        float64           `json:"uploadMbps"`
+	Error             string            `json:"error"`
+	FinishedAt        string            `json:"finishedAt"`
+	LatencyProgress   float64           `json:"latencyProgress"`
+	DownloadProgress  float64           `json:"downloadProgress"`
+	UploadProgress    float64           `json:"uploadProgress"`
+	DownloadStartedAt int64             `json:"downloadStartedAt"`
+	UploadStartedAt   int64             `json:"uploadStartedAt"`
+	MeasurementMs     int64             `json:"measurementMs"`
 }
 
 func (a *App) speedTestSnapshot() SpeedTestState {
@@ -73,7 +79,7 @@ func (a *App) StartSpeedTest(serverID string) (SpeedTestState, error) {
 	a.speedCancel = cancel
 	a.speedRun++
 	run := a.speedRun
-	a.speedTest = SpeedTestState{Phase: "latency", Running: true, ServerID: serverID}
+	a.speedTest = SpeedTestState{Phase: "latency", Running: true, ServerID: serverID, MeasurementMs: 6000}
 	go a.runSpeedTest(ctx, cancel, run, serverID)
 	return a.speedTestSnapshot(), nil
 }
@@ -105,24 +111,32 @@ func (a *App) runSpeedTest(ctx context.Context, cancel context.CancelFunc, run u
 			change(&a.speedTest)
 		}
 	}
-	server, latency, err := selectSpeedServer(ctx, client, serverID, speedTestServers)
+	server, latency, err := selectSpeedServer(ctx, client, serverID, speedTestServers, func(progress float64) {
+		update(func(state *SpeedTestState) { state.LatencyProgress = progress })
+	})
 	if err == nil {
 		update(func(state *SpeedTestState) {
 			state.ServerID = server.ID
 			state.LatencyMs = latency
 			state.Phase = "download"
+			state.DownloadStartedAt = time.Now().UnixMilli()
 		})
 		var rate float64
-		rate, err = measureSpeed(ctx, client, server.baseURL, false, 6*time.Second, func(rate float64) {
-			update(func(state *SpeedTestState) { state.DownloadMbps = rate })
+		rate, err = measureSpeed(ctx, client, server.baseURL, false, 6*time.Second, func(rate, progress float64) {
+			update(func(state *SpeedTestState) { state.DownloadMbps = rate; state.DownloadProgress = progress })
 		})
 		if err == nil {
-			update(func(state *SpeedTestState) { state.DownloadMbps = rate; state.Phase = "upload" })
-			rate, err = measureSpeed(ctx, client, server.baseURL, true, 6*time.Second, func(rate float64) {
-				update(func(state *SpeedTestState) { state.UploadMbps = rate })
+			update(func(state *SpeedTestState) {
+				state.DownloadMbps = rate
+				state.DownloadProgress = 1
+				state.Phase = "upload"
+				state.UploadStartedAt = time.Now().UnixMilli()
+			})
+			rate, err = measureSpeed(ctx, client, server.baseURL, true, 6*time.Second, func(rate, progress float64) {
+				update(func(state *SpeedTestState) { state.UploadMbps = rate; state.UploadProgress = progress })
 			})
 			if err == nil {
-				update(func(state *SpeedTestState) { state.UploadMbps = rate })
+				update(func(state *SpeedTestState) { state.UploadMbps = rate; state.UploadProgress = 1 })
 			}
 		}
 	}
@@ -141,7 +155,7 @@ func (a *App) runSpeedTest(ctx context.Context, cancel context.CancelFunc, run u
 	})
 }
 
-func selectSpeedServer(ctx context.Context, client *http.Client, id string, servers []SpeedTestServer) (SpeedTestServer, float64, error) {
+func selectSpeedServer(ctx context.Context, client *http.Client, id string, servers []SpeedTestServer, progress func(float64)) (SpeedTestServer, float64, error) {
 	type result struct {
 		server  SpeedTestServer
 		latency float64
@@ -168,8 +182,9 @@ func selectSpeedServer(ctx context.Context, client *http.Client, id string, serv
 		}()
 	}
 	best := result{err: errors.New("No speed test server is available.")}
-	for range count {
+	for completed := range count {
 		candidate := <-results
+		progress(float64(completed+1) / float64(count))
 		if candidate.err == nil && (best.err != nil || candidate.latency < best.latency) {
 			best = candidate
 		}
@@ -199,7 +214,7 @@ func speedRequest(ctx context.Context, client *http.Client, method, url string, 
 	return err
 }
 
-func measureSpeed(ctx context.Context, client *http.Client, baseURL string, upload bool, duration time.Duration, progress func(float64)) (float64, error) {
+func measureSpeed(ctx context.Context, client *http.Client, baseURL string, upload bool, duration time.Duration, progress func(float64, float64)) (float64, error) {
 	phaseCtx, cancel := context.WithTimeout(ctx, duration)
 	defer cancel()
 	var total atomic.Int64
@@ -210,11 +225,12 @@ func measureSpeed(ctx context.Context, client *http.Client, baseURL string, uplo
 		workers.Go(func() {
 			payload := make([]byte, 1<<20)
 			rand.Read(payload)
+			payloadSize := 16 * 1024
 			for phaseCtx.Err() == nil {
 				method, url := http.MethodGet, fmt.Sprintf("%sgarbage.php?ckSize=16&r=%d", baseURL, time.Now().UnixNano())
 				var body io.Reader
 				if upload {
-					method, url, body = http.MethodPost, baseURL+"empty.php", speedUploadReader{Reader: bytes.NewReader(payload), total: &total}
+					method, url, body = http.MethodPost, baseURL+"empty.php", bytes.NewReader(payload[:payloadSize])
 				}
 				req, err := http.NewRequestWithContext(phaseCtx, method, url, body)
 				if err != nil {
@@ -222,10 +238,11 @@ func measureSpeed(ctx context.Context, client *http.Client, baseURL string, uplo
 					return
 				}
 				if upload {
-					req.ContentLength = int64(len(payload))
+					req.ContentLength = int64(payloadSize)
 				}
 				req.Header.Set("Cache-Control", "no-cache, no-store")
 				req.Header.Set("Content-Type", "application/octet-stream")
+				requestStart := time.Now()
 				response, err := client.Do(req)
 				if err != nil {
 					if phaseCtx.Err() == nil {
@@ -248,6 +265,12 @@ func measureSpeed(ctx context.Context, client *http.Client, baseURL string, uplo
 					err = readErr
 					if size > 32 {
 						err = errors.New("Unexpected upload response.")
+					}
+					if err == nil {
+						// A successful response confirms the completed upload. Adapt
+						// request size to keep slow links measurable without counting buffers.
+						total.Add(int64(payloadSize))
+						payloadSize = max(4096, min(len(payload), int(float64(payloadSize)*0.5/time.Since(requestStart).Seconds())))
 					}
 				} else {
 					buffer := make([]byte, 32*1024)
@@ -277,7 +300,7 @@ func measureSpeed(ctx context.Context, client *http.Client, baseURL string, uplo
 	for {
 		select {
 		case <-ticker.C:
-			progress(float64(total.Load()) * 8 / time.Since(start).Seconds() / 1e6)
+			progress(float64(total.Load())*8/time.Since(start).Seconds()/1e6, min(1, time.Since(start).Seconds()/duration.Seconds()))
 		case <-done:
 			rate := float64(total.Load()) * 8 / time.Since(start).Seconds() / 1e6
 			if ctx.Err() != nil {
@@ -294,16 +317,4 @@ func measureSpeed(ctx context.Context, client *http.Client, baseURL string, uplo
 			return rate, nil
 		}
 	}
-}
-
-// Count streamed upload bytes so slow links retain their partial measurement.
-type speedUploadReader struct {
-	io.Reader
-	total *atomic.Int64
-}
-
-func (r speedUploadReader) Read(p []byte) (int, error) {
-	n, err := r.Reader.Read(p)
-	r.total.Add(int64(n))
-	return n, err
 }

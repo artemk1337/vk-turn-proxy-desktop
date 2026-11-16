@@ -251,9 +251,18 @@
         <p class="dialog-description" data-i18n="speedRouteHint">Uses current system routing. With split tunneling, the test server may connect directly.</p>
         <p id="speed-context" class="speed-summary"></p>
         <dl class="speed-results">
-          <div><dt data-i18n="speedLatency">Latency</dt><dd id="speed-latency">—</dd></div>
-          <div><dt data-i18n="speedDownload">Download</dt><dd id="speed-download">—</dd></div>
-          <div><dt data-i18n="speedUpload">Upload</dt><dd id="speed-upload">—</dd></div>
+          <div>
+            <dt id="speed-latency-label" data-i18n="speedLatency">Latency</dt>
+            <dd><span id="speed-latency">—</span></dd>
+          </div>
+          <div>
+            <dt id="speed-download-label" data-i18n="speedDownload">Download</dt>
+            <dd><span id="speed-download">—</span><div id="speed-download-progress" class="speed-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-labelledby="speed-download-label"><span class="speed-progress-fill"></span></div></dd>
+          </div>
+          <div>
+            <dt id="speed-upload-label" data-i18n="speedUpload">Upload</dt>
+            <dd><span id="speed-upload">—</span><div id="speed-upload-progress" class="speed-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-labelledby="speed-upload-label"><span class="speed-progress-fill"></span></div></dd>
+          </div>
         </dl>
         <p id="speed-phase" class="speed-summary" role="status" aria-live="polite"></p>
         <p id="speed-error" class="form-error" role="alert" hidden></p>

@@ -6,6 +6,10 @@ export function createSpeedTest({ backend, t, getState, refreshDropdowns, showEr
   let signature = '';
   let lastResult;
   let actionError = '';
+  let polling = false;
+  let actionVersion = 0;
+  const animations = new Map();
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const number = (value, unit) => value > 0 ? `${value.toFixed(1)} ${t(unit)}` : '—';
 
   function render() {
@@ -24,8 +28,10 @@ export function createSpeedTest({ backend, t, getState, refreshDropdowns, showEr
     $('speed-latency').textContent = number(result.latencyMs, 'speedMs');
     $('speed-download').textContent = number(result.downloadMbps, 'speedMbps');
     $('speed-upload').textContent = number(result.uploadMbps, 'speedMbps');
+    renderProgress();
     const phases = { idle: 'speedIdle', latency: 'speedLatencyPhase', download: 'speedDownloadPhase', upload: 'speedUploadPhase', done: 'speedDone', cancelled: 'speedCancelled', failed: 'speedFailed' };
-    $('speed-phase').textContent = result.error ? '' : t(phases[result.phase] || 'speedIdle');
+    $('speed-phase').hidden = !result.running || Boolean(result.error);
+    $('speed-phase').textContent = result.running ? t(phases[result.phase] || 'speedIdle') : '';
     $('speed-error').hidden = !result.error && !actionError;
     $('speed-error').textContent = actionError || (result.error ? t('speedFailed') : '');
     $('speed-context').textContent = profileName ? t('speedProfile', { name: profileName }) : t('speedDirect');
@@ -43,10 +49,53 @@ export function createSpeedTest({ backend, t, getState, refreshDropdowns, showEr
     refreshDropdowns();
   }
 
+  function renderProgress() {
+    for (const stage of ['download', 'upload']) {
+      const bar = $(`speed-${stage}-progress`);
+      const fill = bar.firstElementChild;
+      const startedAt = result[`${stage}StartedAt`] || 0;
+      const duration = result.measurementMs;
+      let progress = Math.max(0, Math.min(1, Number(result[`${stage}Progress`]) || 0));
+      let entry = animations.get(stage);
+      if (entry && (entry.startedAt !== startedAt || reducedMotion.matches || !$('speed-dialog').open)) {
+        entry.animation.cancel();
+        animations.delete(stage);
+        entry = undefined;
+      }
+      if (startedAt && duration > 0 && !reducedMotion.matches && $('speed-dialog').open) {
+        if (!entry) {
+          const animation = fill.animate(
+            [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }],
+            { duration, easing: 'linear', fill: 'forwards' },
+          );
+          animation.currentTime = result.running
+            ? Math.max(0, Math.min(duration, Date.now() - startedAt))
+            : progress * duration;
+          entry = { startedAt, animation };
+          animations.set(stage, entry);
+        }
+        if (progress === 1) entry.animation.finish();
+        else if (!result.running || result.phase !== stage) entry.animation.pause();
+        progress = Math.max(0, Math.min(1, Number(entry.animation.currentTime) / duration));
+      } else fill.style.transform = `scaleX(${progress})`;
+      bar.setAttribute('aria-valuenow', String(Math.round(progress * 100)));
+    }
+  }
+
+  reducedMotion.addEventListener('change', renderProgress);
+  $('speed-dialog').addEventListener('close', renderProgress);
+  setInterval(() => {
+    if ($('speed-dialog').open && result.running) poll().catch(showError);
+  }, 100);
+
   async function poll() {
-    if (pending || (!$('speed-dialog').open && !result.running)) return;
-    result = await backend().GetSpeedTest();
-    render();
+    if (polling || pending || (!$('speed-dialog').open && !result.running)) return;
+    polling = true;
+    const version = actionVersion;
+    try {
+      const next = await backend().GetSpeedTest();
+      if (version === actionVersion) { result = next; render(); }
+    } finally { polling = false; }
   }
 
   $('speed-open').addEventListener('click', async () => {
@@ -58,6 +107,7 @@ export function createSpeedTest({ backend, t, getState, refreshDropdowns, showEr
   $('speed-start').addEventListener('click', async () => {
     if (pending) return;
     pending = true;
+    actionVersion++;
     actionError = '';
     render();
     try {
