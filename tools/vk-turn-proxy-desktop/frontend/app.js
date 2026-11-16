@@ -19,6 +19,7 @@ const handshakeFields = [
   { id: 'wrapa-handshake-timeout', preference: 'wrapAHandshakeSeconds', contract: 'wrapA', fallback: 10 },
 ];
 const icons = {
+  about: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v1"/>',
   power: '<path d="M12 2v10"/><path d="M6.2 5.7a8 8 0 1 0 11.6 0"/>',
   routing: '<path d="M5 4v12a4 4 0 0 0 4 4h2M5 8h10a4 4 0 0 1 4 4v8M2 7l3-3 3 3M16 17l3 3 3-3"/>',
   log: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/>',
@@ -285,7 +286,7 @@ function openUpdate() {
 function switchPage(next) {
   connectionFlash?.cancel();
   page = next;
-  for (const name of ['connection', 'routing', 'logs', 'settings']) $(`${name}-page`).hidden = name !== page;
+  for (const name of ['connection', 'routing', 'logs', 'settings', 'about']) $(`${name}-page`).hidden = name !== page;
   document.querySelectorAll('[data-page]').forEach((button) => {
     const active = button.dataset.page === page;
     button.classList.toggle('active', active);
@@ -484,6 +485,11 @@ async function poll() {
 document
   .querySelectorAll('[data-page]')
   .forEach((button) => button.addEventListener('click', () => switchPage(button.dataset.page)));
+$('repository-link').addEventListener('click', (event) => {
+  if (typeof window.runtime?.BrowserOpenURL !== 'function') return;
+  event.preventDefault();
+  window.runtime.BrowserOpenURL(event.currentTarget.href);
+});
 $('theme-choice').addEventListener('segment-change', (event) =>
   savePreferences({ theme: event.detail.value }, event.currentTarget),
 );

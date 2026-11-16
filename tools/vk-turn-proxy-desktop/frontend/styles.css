@@ -1087,3 +1087,9 @@ dialog::backdrop {
   .speed-progress { border: 1px solid CanvasText; background: Canvas; }
   .speed-progress-fill { background: Highlight; }
 }
+
+#repository-link {
+  color: var(--text);
+  text-decoration: none;
+  white-space: nowrap;
+}

@@ -35,6 +35,7 @@ Follow the parent [AGENTS.md](../AGENTS.md).
 
 ## State and WebView behavior
 
+- The About page links to this repository on GitHub through the external browser, with a regular link fallback for the browser demo.
 - App update status comes from `GetState().updates`. Settings provides a manual check and a release-page action. Keep the available-version sidebar action visible across navigation, language/theme changes and polling. Open only the validated project GitHub release URL in the external browser.
 
 - Show cached-allocation cooldowns as quota waiting, with an explicit previous-session reason and a minute/second countdown. After TURN 486, show quota waiting with the countdown to the next one-minute availability check. For other connection retries, show the localized server error and next-attempt countdown in the connection hint. Keep the power button available to cancel, and clear the retry presentation on recovery.
