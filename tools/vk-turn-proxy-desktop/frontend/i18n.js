@@ -1,5 +1,16 @@
 export const messages = {
   en: {
+    appUpdates: "App updates",
+    appVersion: "Installed version {version}",
+    checkUpdates: "Check for updates",
+    downloadUpdate: "Download update",
+    updateIdle: "Stable GitHub releases",
+    updateChecking: "Checking for updates…",
+    updateCurrent: "You have the latest version.",
+    updateAvailable: "Version {version} available",
+    updateFailed: "Could not check for updates. Try again.",
+    updateDevelopment: "Development build. Version comparison is unavailable.",
+
     liveTraffic: 'Connection traffic',
     waitingQuota: 'Waiting for VK quota',
     quotaRetryHint: 'Next attempt in {time}…',
@@ -189,6 +200,17 @@ export const messages = {
     starting: 'Starting…',
   },
   ru: {
+    appUpdates: "Обновления приложения",
+    appVersion: "Установлена версия {version}",
+    checkUpdates: "Проверить обновления",
+    downloadUpdate: "Скачать обновление",
+    updateIdle: "Стабильные релизы GitHub",
+    updateChecking: "Проверка обновлений…",
+    updateCurrent: "Установлена последняя версия.",
+    updateAvailable: "Доступна версия {version}",
+    updateFailed: "Не удалось проверить обновления. Повторите попытку.",
+    updateDevelopment: "Сборка для разработки. Сравнение версий недоступно.",
+
     liveTraffic: 'Трафик подключения',
     waitingQuota: 'Ожидание квоты VK',
     quotaRetryHint: 'Следующая попытка через {time}…',

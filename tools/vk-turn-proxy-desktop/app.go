@@ -19,6 +19,7 @@ import (
 )
 
 type State struct {
+	Updates     UpdateState              `json:"updates"`
 	Preferences Preferences              `json:"preferences"`
 	Defaults    desktopsettings.Settings `json:"defaults"`
 	Profiles    []Profile                `json:"profiles"`
@@ -42,6 +43,9 @@ type VKState struct {
 }
 
 type App struct {
+	updates       UpdateState
+	updateAttempt time.Time
+	updateFetch   func(context.Context) (string, error)
 	speedTest     SpeedTestState
 	speedCancel   context.CancelFunc
 	speedRun      uint64
@@ -95,7 +99,7 @@ func newApp(root, backend string, quit func()) (*App, error) {
 		cookies = nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	a := &App{root: root, backend: backend, preferences: prefs, profiles: profiles, routingData: routingdata.NewStore(filepath.Join(root, "routing-data")),
+	a := &App{updates: initialUpdateState(), updateFetch: fetchLatestRelease, root: root, backend: backend, preferences: prefs, profiles: profiles, routingData: routingdata.NewStore(filepath.Join(root, "routing-data")),
 		cookies: string(cookies), vk: VKState{Status: "unknown"}, connection: "disconnected",
 		logs: Logs{Lines: []string{}}, diskLogs: diskLog{root: diskLogs.root, day: diskLogs.day}, ctx: ctx, cancel: cancel, quit: quit, frontendReady: make(chan struct{})}
 	a.diskLogs.start(a.diskLogs.writeBatch, a.reportDiskLog)
@@ -127,7 +131,7 @@ func (a *App) snapshot() State {
 	for i := range profiles {
 		profiles[i].Routing = cloneRouting(profiles[i].Routing)
 	}
-	return State{Preferences: a.preferences, Defaults: defaults, Profiles: profiles,
+	return State{Updates: a.updates, Preferences: a.preferences, Defaults: defaults, Profiles: profiles,
 		ActiveID: a.profiles.ActiveID, Connection: ConnectionState{State: a.connection, TrafficBytesPerSecond: traffic,
 			DownloadBytesPerSecond: download, UploadBytesPerSecond: upload, RetryError: a.retryError, RetryAt: a.retryAt}, VK: vk, Error: a.lastError}
 }
@@ -345,6 +349,7 @@ func (a *App) checkVK() {
 }
 
 func (a *App) startChecks() {
+	go a.appUpdates()
 	a.checkVK()
 	go a.routingUpdates()
 	go func() {

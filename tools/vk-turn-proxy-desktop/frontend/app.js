@@ -252,11 +252,34 @@ function renderConnection() {
 function render() {
   renderLanguage();
   renderPreferences();
+  renderUpdates();
   renderProfiles();
   renderConnection();
   routing.render();
   speedTest.render();
   $('log-count').textContent = `${displayedLogs.length} ${t('lines')}`;
+}
+
+function renderUpdates() {
+  const update = state.updates || { status: 'idle', currentVersion: 'dev' };
+  const available = Boolean(update.url);
+  $('app-version').textContent = t('appVersion', { version: update.currentVersion });
+  const statusKeys = {
+    idle: 'updateIdle', checking: 'updateChecking', current: 'updateCurrent',
+    available: 'updateAvailable', error: 'updateFailed', development: 'updateDevelopment',
+  };
+  $('update-status').textContent = t(statusKeys[update.status] || 'updateIdle', { version: update.latestVersion });
+  $('check-updates').disabled = update.status === 'checking';
+  $('open-update').hidden = !available;
+  $('update-notice').hidden = !available;
+  $('update-notice-label').textContent = available ? t('updateAvailable', { version: update.latestVersion }) : '';
+}
+
+function openUpdate() {
+  const url = state.updates?.url;
+  if (!/^https:\/\/github\.com\/artemk1337\/vk-turn-proxy-desktop\/releases\/tag\/v?[0-9]+\.[0-9]+\.[0-9]+$/.test(url || '')) return;
+  if (typeof window.runtime?.BrowserOpenURL !== 'function') throw new Error(t('desktopOnly'));
+  window.runtime.BrowserOpenURL(url);
 }
 
 function switchPage(next) {
@@ -535,6 +558,9 @@ $('clear-logs').addEventListener('click', () =>
 $('follow-log').addEventListener('click', () => {
   $('log-output').scrollTop = $('log-output').scrollHeight;
 });
+$('check-updates').addEventListener('click', () => action(() => mutate('CheckForUpdates')));
+$('open-update').addEventListener('click', () => action(openUpdate));
+$('update-notice').addEventListener('click', () => action(openUpdate));
 $('exit').addEventListener('click', () => action(() => backend().Exit()));
 
 document.addEventListener('visibilitychange', () => {

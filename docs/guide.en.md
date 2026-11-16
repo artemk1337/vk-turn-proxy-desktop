@@ -22,7 +22,7 @@ Approve the administrator prompt to manage the VPN tunnel.
 Install the `.deb` on Debian or Ubuntu and open **VK TURN Proxy** from the applications menu
 
 ```sh
-sudo apt install ./vk-turn-proxy-linux-v1.12.0-amd64.deb
+sudo apt install ./vk-turn-proxy-linux-v1.13.0-amd64.deb
 ```
 
 For portable use, extract the `.tar.gz` and run `./vk-turn-proxy-desktop`. It requires GTK 3, WebKitGTK 4.1, iproute2 and polkit. Website login additionally uses Python 3, PyGObject and `gir1.2-webkit2-4.1`. The app requests administrator access when connecting.
@@ -47,6 +47,8 @@ Manual configs require one peer, IPv4 and `AllowedIPs = 0.0.0.0/0`. SRTP require
 **Sign in to VK** is on the main screen and applies to all profiles. The session is saved separately and checked every five minutes. **Cookies** accepts a Netscape file or `remixsid=…; p=…`. Website login requires [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) on Windows or WebKitGTK (`gir1.2-webkit2-4.1`) on Linux.
 
 **Settings** contains language, theme, autostart and the log limit on all platforms. The log retains 1000 lines by default, adjustable from 100 to 10,000, with a separate 4 MiB cap. Closing the window hides it in the tray when available. **Exit** disconnects and closes the app.
+
+The app checks stable GitHub releases at startup and daily while open. Use **Settings → App updates → Check for updates** to check manually. When a new version is available, the sidebar and Settings provide an action to open its GitHub release in your browser. Download the package for your platform and follow the installation steps above.
 
 ## Connection diagnostics
 

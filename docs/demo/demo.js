@@ -5,6 +5,7 @@ const language = new URLSearchParams(location.search).get('lang') === 'en' ? 'en
 const clone = (value) => structuredClone(value);
 const state = {
   defaults,
+  updates: { currentVersion: "demo", latestVersion: "", status: "development", url: "" },
   preferences: {
     language, theme: 'dark', autoStart: false, logLines: defaults.logLines.default,
     routingAutoUpdate: true,
@@ -111,6 +112,7 @@ function updateSpeed() {
 }
 
 window.go = { main: { App: {
+  CheckForUpdates: async () => clone(state),
   GetState: async () => clone(state),
   FrontendReady: async () => {},
   SavePreferences: async (preferences) => {

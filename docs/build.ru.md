@@ -11,8 +11,8 @@
 
 
 ```sh
-docker build --build-arg VERSION=v1.12.0 --build-arg RUN_TESTS=false --output dist/windows -f Dockerfile.windows .
-docker build --target packages --build-arg VERSION=v1.12.0 --build-arg RUN_TESTS=false --output dist/linux -f Dockerfile.linux .
+docker build --build-arg VERSION=v1.13.0 --build-arg RUN_TESTS=false --output dist/windows -f Dockerfile.windows .
+docker build --target packages --build-arg VERSION=v1.13.0 --build-arg RUN_TESTS=false --output dist/linux -f Dockerfile.linux .
 ```
 
 В `dist` появятся ZIP и установщики Windows, архивы и DEB-пакеты Linux для x64 и ARM64 с контрольными суммами.
@@ -20,7 +20,7 @@ docker build --target packages --build-arg VERSION=v1.12.0 --build-arg RUN_TESTS
 Пакеты macOS собираются на Mac с Xcode Command Line Tools и Apple SDK
 
 ```sh
-sh installer/macos/package.sh v1.12.0 dist/macos
+sh installer/macos/package.sh v1.13.0 dist/macos
 ```
 
 Команда создаёт ZIP для Intel и Apple Silicon с ad-hoc подписью и контрольными суммами.

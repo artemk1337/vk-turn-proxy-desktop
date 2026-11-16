@@ -667,6 +667,28 @@ h2 {
   --segment-text: var(--accent-text);
   background: var(--surface);
 }
+.update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  max-width: 260px;
+}
+.update-row > div:first-child {
+  min-width: 0;
+}
+.update-actions button {
+  white-space: normal;
+}
+.update-notice {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  overflow-wrap: anywhere;
+}
+.update-notice span:last-child {
+  min-width: 0;
+  line-height: 1.5;
+}
 .notifications {
   position: absolute;
   inset: 14px 18px auto;

@@ -47,7 +47,7 @@ for arch in amd64 arm64; do
     GOOS=darwin GOARCH="$arch" CGO_ENABLED=1 CC="clang -arch $clang_arch" \
       CGO_CFLAGS="${CGO_CFLAGS:-} -mmacosx-version-min=12.0" \
       CGO_LDFLAGS="${CGO_LDFLAGS:-} -mmacosx-version-min=12.0 -framework UniformTypeIdentifiers" \
-      go build -buildvcs=false -tags desktop,production -trimpath -ldflags '-s -w' \
+      go build -buildvcs=false -tags desktop,production -trimpath -ldflags "-s -w -X main.version=${version}" \
         -o "$binaries/vk-turn-proxy-desktop" ./tools/vk-turn-proxy-desktop
     GOOS=darwin GOARCH="$arch" CGO_ENABLED=0 go build -buildvcs=false -trimpath \
       -ldflags "-s -w -X main.version=${version}" \

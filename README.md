@@ -21,7 +21,7 @@ VPN-клиент для Windows, Linux и macOS с передачей трафи
 В Debian или Ubuntu установите `.deb` и откройте **VK TURN Proxy** из меню приложений
 
 ```sh
-sudo apt install ./vk-turn-proxy-linux-v1.12.0-amd64.deb
+sudo apt install ./vk-turn-proxy-linux-v1.13.0-amd64.deb
 ```
 
 Для portable-версии распакуйте `.tar.gz` и запустите `./vk-turn-proxy-desktop`. Нужны GTK 3, WebKitGTK 4.1, iproute2 и polkit. Для входа в VK через сайт также нужны Python 3, PyGObject и `gir1.2-webkit2-4.1`.

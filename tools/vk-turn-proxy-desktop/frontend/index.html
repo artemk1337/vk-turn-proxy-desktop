@@ -39,6 +39,9 @@
           </button>
         </nav>
         <div class="sidebar-bottom">
+          <button id="update-notice" class="nav-item update-notice" hidden>
+            <span data-icon="arrow"></span><span id="update-notice-label"></span>
+          </button>
           <button id="theme-toggle" class="nav-item">
             <span id="theme-icon" data-icon="moon"></span><span id="theme-label">Dark theme</span>
           </button>
@@ -247,6 +250,19 @@
                 value="1000"
                 aria-describedby="log-limit-hint"
               />
+            </div>
+          </div>
+          <div class="settings-group">
+            <div class="setting-row update-row">
+              <div>
+                <h2 data-i18n="appUpdates">App updates</h2>
+                <p id="app-version"></p>
+                <p id="update-status" role="status"></p>
+              </div>
+              <div class="update-actions">
+                <button type="button" id="check-updates" class="secondary" data-i18n="checkUpdates">Check for updates</button>
+                <button type="button" id="open-update" class="primary" data-i18n="downloadUpdate" hidden>Download update</button>
+              </div>
             </div>
           </div>
         </section>
