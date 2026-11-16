@@ -219,6 +219,22 @@
               ><input id="autostart" class="switch" type="checkbox" role="switch" />
             </div>
             <div class="setting-row">
+              <div>
+                <div class="field-label">
+                  <h2 id="handshake-timeouts-label" data-i18n="handshakeTimeouts">Handshake timeouts, s</h2>
+                  <span class="help">
+                  <button type="button" class="help-button" aria-describedby="handshake-timeouts-help" data-i18n-aria="handshakeTimeouts" aria-label="Handshake timeouts, s"><span aria-hidden="true">i</span></button>
+                  <span id="handshake-timeouts-help" class="help-tooltip" role="tooltip" data-i18n="handshakeTimeoutsHelp">Maximum wait for one transport handshake attempt, from 1 to 300 seconds. Applied on the next connection.</span>
+                  </span>
+                </div>
+              </div>
+              <div class="timeout-fields" role="group" aria-labelledby="handshake-timeouts-label">
+                <label for="srtp-handshake-timeout">SRTP<input id="srtp-handshake-timeout" type="number" min="1" max="300" step="1" required aria-describedby="handshake-timeouts-help" /></label>
+                <label for="dtls-handshake-timeout">DTLS<input id="dtls-handshake-timeout" type="number" min="1" max="300" step="1" required aria-describedby="handshake-timeouts-help" /></label>
+                <label for="wrapa-handshake-timeout">WRAP-A<input id="wrapa-handshake-timeout" type="number" min="1" max="300" step="1" required aria-describedby="handshake-timeouts-help" /></label>
+              </div>
+            </div>
+            <div class="setting-row">
               <label for="log-limit"
                 ><h2 data-i18n="logLimit">Log line limit</h2>
                 <p id="log-limit-hint"></p></label

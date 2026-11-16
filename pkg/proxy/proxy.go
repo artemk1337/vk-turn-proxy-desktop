@@ -32,10 +32,20 @@ import (
 	"github.com/artemk1337/vk-turn-proxy-desktop/pkg/proxy/srtpwrap"
 )
 
+const (
+	DefaultDTLSHandshakeTimeout  = 15 * time.Second
+	DefaultWrapAHandshakeTimeout = 10 * time.Second
+)
+
 // Config holds proxy configuration.
 type Config struct {
 	// OnRetry reports connection failures and their next retry delay. A nil error clears the report.
 	OnRetry func(error, time.Duration)
+
+	// Handshake timeouts apply to each attempt. Zero keeps the transport default.
+	SRTPHandshakeTimeout  time.Duration
+	DTLSHandshakeTimeout  time.Duration
+	WrapAHandshakeTimeout time.Duration
 
 	PeerAddr    string   // vk-turn-proxy server address (host:port)
 	TurnServer  string   // override TURN server host (optional; the older pair — TurnServers wins when set)
@@ -545,6 +555,15 @@ type Proxy struct {
 
 // NewProxy creates a new proxy instance.
 func NewProxy(cfg Config) *Proxy {
+	if cfg.SRTPHandshakeTimeout <= 0 {
+		cfg.SRTPHandshakeTimeout = srtpwrap.HandshakeTimeout
+	}
+	if cfg.DTLSHandshakeTimeout <= 0 {
+		cfg.DTLSHandshakeTimeout = DefaultDTLSHandshakeTimeout
+	}
+	if cfg.WrapAHandshakeTimeout <= 0 {
+		cfg.WrapAHandshakeTimeout = DefaultWrapAHandshakeTimeout
+	}
 	if cfg.NumConns <= 0 {
 		cfg.NumConns = 1
 	}
@@ -2337,7 +2356,7 @@ func (p *Proxy) runDTLSSession(sessCtx context.Context, linkID string, readyCh c
 	// DTLS handshake — packets go through conn1 → conn2 → TURN relay → peer
 	dtlsStart := time.Now()
 	finishHandshake := p.traceTransportStage(connCtx, connIdx, turnAddr, "DTLS handshake to "+p.peer.String(), creds)
-	dtlsConn, err := dialDTLS(connCtx, conn1, p.peer)
+	dtlsConn, err := dialDTLS(connCtx, conn1, p.peer, p.config.DTLSHandshakeTimeout)
 	finishHandshake(err)
 	if err != nil {
 		connCancel()
@@ -3025,7 +3044,7 @@ func (p *Proxy) runWrapASession(sessCtx context.Context, linkID string, readyCh 
 		return fmt.Errorf("WRAP-A init: %w", err)
 	}
 	dtlsStart := time.Now()
-	dtlsConn, err := dialDTLSWrapA(connCtx, wrapAPC, p.peer)
+	dtlsConn, err := dialDTLSWrapA(connCtx, wrapAPC, p.peer, p.config.WrapAHandshakeTimeout)
 	if err != nil {
 		connCancel()
 		select {
@@ -3195,7 +3214,7 @@ func (p *Proxy) runWrapASession(sessCtx context.Context, linkID string, readyCh 
 // his go_client/session.go, mirrored in tools/wrapa_test). One handshake
 // retry: M3 saw a transient ~20s handshake timeout from UDP loss on the first
 // attempt that cleared on retry.
-func dialDTLSWrapA(ctx context.Context, transport net.PacketConn, peer *net.UDPAddr) (net.Conn, error) {
+func dialDTLSWrapA(ctx context.Context, transport net.PacketConn, peer *net.UDPAddr, timeout time.Duration) (net.Conn, error) {
 	cert, err := selfsign.GenerateSelfSigned()
 	if err != nil {
 		return nil, err
@@ -3217,7 +3236,7 @@ func dialDTLSWrapA(ctx context.Context, transport net.PacketConn, peer *net.UDPA
 			lastErr = derr
 			continue
 		}
-		hsCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		hsCtx, cancel := context.WithTimeout(ctx, timeout)
 		herr := dconn.HandshakeContext(hsCtx)
 		cancel()
 		if herr == nil {
@@ -4378,7 +4397,7 @@ func humanBytes(n int64) string {
 	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGT"[exp])
 }
 
-func dialDTLS(ctx context.Context, transport net.PacketConn, peer *net.UDPAddr) (net.Conn, error) {
+func dialDTLS(ctx context.Context, transport net.PacketConn, peer *net.UDPAddr, timeout time.Duration) (net.Conn, error) {
 	certificate, err := selfsign.GenerateSelfSigned()
 	if err != nil {
 		return nil, err
@@ -4412,13 +4431,7 @@ func dialDTLS(ctx context.Context, transport net.PacketConn, peer *net.UDPAddr) 
 	if err != nil {
 		return nil, err
 	}
-	// 15s timeout: shorter than the 30s default so the bootstrap retry
-	// loop (see startConnections) gets ~4 chances within ~90s instead of
-	// burning ~60s on two long timeouts. Real-world DTLS handshakes
-	// complete in ~50-300ms (see "DTLS HS" in stats), so 15s is plenty
-	// of headroom for slow networks while still failing fast on transient
-	// network breaks worth retrying.
-	hsCtx, hsCancel := context.WithTimeout(ctx, 15*time.Second)
+	hsCtx, hsCancel := context.WithTimeout(ctx, timeout)
 	defer hsCancel()
 	if err := dtlsConn.HandshakeContext(hsCtx); err != nil {
 		dtlsConn.Close()
@@ -5682,9 +5695,13 @@ func (p *Proxy) setupSRTPSession(ctx context.Context, turnAddr string, creds *TU
 	log.Printf("proxy: [conn %d] TURN relay allocated: %s (RTT %dms, local=%s)",
 		connIdx, relayConn.LocalAddr(), allocDur.Milliseconds(), ctlConn.LocalAddr())
 
-	hsCtx, hsCancel := context.WithTimeout(ctx, srtpwrap.HandshakeTimeout)
+	timeout := p.config.SRTPHandshakeTimeout
+	if timeout <= 0 {
+		timeout = srtpwrap.HandshakeTimeout
+	}
+	hsCtx, hsCancel := context.WithTimeout(ctx, timeout)
 	finishHandshake := p.traceTransportStage(hsCtx, connIdx, turnAddr, "SRTP handshake to "+p.peer.String(), creds)
-	srtpConn, err := srtpwrap.Client(hsCtx, relayConn, p.peer, &p.rtpChPeak)
+	srtpConn, err := srtpwrap.ClientWithHandshakeTimeout(hsCtx, relayConn, p.peer, &p.rtpChPeak, timeout)
 	finishHandshake(err)
 	hsCancel()
 	if err != nil {

@@ -11,18 +11,25 @@ import (
 var settingsJSON []byte
 
 type Settings struct {
-	Languages            [2]string `json:"languages"`
-	Themes               [2]string `json:"themes"`
-	DefaultLanguage      string    `json:"defaultLanguage"`
-	DefaultTheme         string    `json:"defaultTheme"`
-	LogLines             LogLines  `json:"logLines"`
-	LogMaxBytes          int       `json:"logMaxBytes"`
-	LogRetentionDays     int       `json:"logRetentionDays"`
-	VKCheckSeconds       int       `json:"vkCheckSeconds"`
-	DefaultTransport     string    `json:"defaultTransport"`
-	RoutingUpdateSeconds int       `json:"routingUpdateSeconds"`
-	MTU                  LogLines  `json:"mtu"`
-	Connections          LogLines  `json:"connections"`
+	Languages            [2]string         `json:"languages"`
+	Themes               [2]string         `json:"themes"`
+	DefaultLanguage      string            `json:"defaultLanguage"`
+	DefaultTheme         string            `json:"defaultTheme"`
+	LogLines             LogLines          `json:"logLines"`
+	LogMaxBytes          int               `json:"logMaxBytes"`
+	LogRetentionDays     int               `json:"logRetentionDays"`
+	VKCheckSeconds       int               `json:"vkCheckSeconds"`
+	DefaultTransport     string            `json:"defaultTransport"`
+	RoutingUpdateSeconds int               `json:"routingUpdateSeconds"`
+	MTU                  LogLines          `json:"mtu"`
+	Connections          LogLines          `json:"connections"`
+	HandshakeTimeouts    HandshakeTimeouts `json:"handshakeTimeouts"`
+}
+
+type HandshakeTimeouts struct {
+	SRTP  LogLines `json:"srtp"`
+	DTLS  LogLines `json:"dtls"`
+	WrapA LogLines `json:"wrapA"`
 }
 
 type LogLines struct {

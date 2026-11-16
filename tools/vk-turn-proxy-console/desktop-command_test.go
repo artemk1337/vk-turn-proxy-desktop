@@ -69,6 +69,7 @@ func TestDesktopProfileValidationUsesSharedParsers(t *testing.T) {
 		{"-validate-profile", "-config", writeBackup(t, globals(srtpServer("Home"))), "-server", "Home", "-conns", "30", "-mtu", "1280"},
 		{"-validate-profile", "-wg-config", config, "-vk-link-file", link, "-peer", "override.example:56000", "-server-transport", "dtls", "-conns", "30", "-mtu", "1280", "-turn-transport", "udp"},
 	} {
+		args = append(args, "-srtp-handshake-timeout", "60s", "-dtls-handshake-timeout", "60s", "-wrapa-handshake-timeout", "60s")
 		o, err := parseFlags(args)
 		if err != nil {
 			t.Fatal(err)

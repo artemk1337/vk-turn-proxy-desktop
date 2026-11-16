@@ -86,7 +86,6 @@ func pktPoolPut(b []byte) {
 	pktPool.Put(b[:cap(b)])
 }
 
-
 const (
 	// PayloadType for the synthetic RTP wrapper. 100 is the dynamic-range
 	// value commonly assigned to VP8 in WebRTC SDP offers, so receivers
@@ -119,6 +118,15 @@ func IsRTP(b byte) bool { return b >= 128 && b <= 191 }
 // underlay can be any net.PacketConn — including a TURN-relayed conn
 // returned by pion/turn's client.Allocate().
 func Client(ctx context.Context, underlay net.PacketConn, remote net.Addr, rxDepthGauge *atomic.Int64) (net.Conn, error) {
+	return ClientWithHandshakeTimeout(ctx, underlay, remote, rxDepthGauge, HandshakeTimeout)
+}
+
+// ClientWithHandshakeTimeout performs Client with a per-attempt handshake budget.
+// A nonpositive timeout preserves the default.
+func ClientWithHandshakeTimeout(ctx context.Context, underlay net.PacketConn, remote net.Addr, rxDepthGauge *atomic.Int64, timeout time.Duration) (net.Conn, error) {
+	if timeout <= 0 {
+		timeout = HandshakeTimeout
+	}
 	if underlay == nil {
 		return nil, errors.New("srtpwrap: underlay is nil")
 	}
@@ -134,7 +142,7 @@ func Client(ctx context.Context, underlay net.PacketConn, remote net.Addr, rxDep
 	dtlsCh := make(chan []byte, 64)
 	rtpCh := make(chan []byte, 4096)
 	// Decouple demux's ctx from caller's ctx. Production callers commonly
-	// wrap their parent ctx with a short handshake-timeout context (10s)
+	// wrap their parent ctx with a handshake-timeout context
 	// and `cancel()` it the instant srtpwrap.Client returns — see
 	// pkg/proxy/proxy.go setupSRTPSession. If demuxCtx inherited from
 	// that ctx, the demux goroutine would die the moment handshake
@@ -176,7 +184,7 @@ func Client(ctx context.Context, underlay net.PacketConn, remote net.Addr, rxDep
 		demuxCancel()
 		return nil, fmt.Errorf("srtpwrap: dtls client init: %w", err)
 	}
-	hsCtx, hsCancel := context.WithTimeout(ctx, HandshakeTimeout)
+	hsCtx, hsCancel := context.WithTimeout(ctx, timeout)
 	hsErr := dconn.HandshakeContext(hsCtx)
 	hsCancel()
 	if hsErr != nil {

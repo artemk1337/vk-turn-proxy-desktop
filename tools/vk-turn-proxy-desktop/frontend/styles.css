@@ -648,6 +648,20 @@ h2 {
 .setting-row input[type='number'] {
   width: 110px;
 }
+.timeout-fields {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.timeout-fields label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.setting-row .timeout-fields input {
+  width: 76px;
+}
 .theme-options {
   --segment-fill: var(--accent-soft);
   --segment-text: var(--accent-text);

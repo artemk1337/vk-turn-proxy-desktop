@@ -13,6 +13,11 @@ const notify = createNotifications($('notifications'));
 const refreshDropdowns = initializeDropdowns(document);
 initializeHelpTooltips(document);
 const maxInputBytes = 4 * 1024 * 1024;
+const handshakeFields = [
+  { id: 'srtp-handshake-timeout', preference: 'srtpHandshakeSeconds', contract: 'srtp', fallback: 10 },
+  { id: 'dtls-handshake-timeout', preference: 'dtlsHandshakeSeconds', contract: 'dtls', fallback: 15 },
+  { id: 'wrapa-handshake-timeout', preference: 'wrapAHandshakeSeconds', contract: 'wrapA', fallback: 10 },
+];
 const icons = {
   power: '<path d="M12 2v10"/><path d="M6.2 5.7a8 8 0 1 0 11.6 0"/>',
   routing: '<path d="M5 4v12a4 4 0 0 0 4 4h2M5 8h10a4 4 0 0 1 4 4v8M2 7l3-3 3 3M16 17l3 3 3-3"/>',
@@ -162,6 +167,13 @@ function renderPreferences() {
   $('log-limit').min = limits.min;
   $('log-limit').max = limits.max;
   $('log-limit-hint').textContent = t('logLimitHint', limits);
+  for (const field of handshakeFields) {
+    const input = $(field.id);
+    const bounds = state.defaults?.handshakeTimeouts?.[field.contract] || { min: 1, max: 300, default: field.fallback };
+    input.min = bounds.min;
+    input.max = bounds.max;
+    if (document.activeElement !== input) input.value = preferences[field.preference] ?? bounds.default;
+  }
 }
 
 function renderProfiles() {
@@ -471,6 +483,11 @@ $('autostart').addEventListener('change', () => savePreferences({ autoStart: $('
 $('log-limit').addEventListener('change', () => {
   if ($('log-limit').reportValidity()) savePreferences({ logLines: Number($('log-limit').value) });
 });
+for (const field of handshakeFields) {
+  $(field.id).addEventListener('change', () => {
+    if ($(field.id).reportValidity()) savePreferences({ [field.preference]: Number($(field.id).value) });
+  });
+}
 $('profile-choice').addEventListener('change', () =>
   action(() => mutate('SelectProfile', $('profile-choice').value)),
 );

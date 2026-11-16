@@ -35,6 +35,7 @@ func (a *App) validateProfile(p Profile) error {
 	if err != nil {
 		return err
 	}
+	args = append(args, handshakeArguments(a.preferences)...)
 	ctx, cancel := context.WithTimeout(a.ctx, 20*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, a.backend, append([]string{"-validate-profile"}, args...)...)
@@ -90,6 +91,7 @@ func (a *App) Connect() (State, error) {
 	if err != nil {
 		return a.snapshot(), err
 	}
+	args = append(args, handshakeArguments(a.preferences)...)
 	routingArgs, err := a.routingArguments(selected.Routing, directory)
 	if err != nil {
 		return a.snapshot(), err

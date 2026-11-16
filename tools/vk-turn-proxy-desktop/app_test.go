@@ -381,3 +381,45 @@ func TestProfileMTU(t *testing.T) {
 		t.Fatal("MTU was not preserved")
 	}
 }
+
+func TestHandshakePreferences(t *testing.T) {
+	for _, value := range []int{0, -1, 1, 60, 300, 301} {
+		a := testApp(t)
+		state, err := a.SavePreferences(Preferences{SRTPHandshakeSeconds: value, DTLSHandshakeSeconds: value, WrapAHandshakeSeconds: value})
+		if err != nil {
+			t.Fatal(err)
+		}
+		loaded, err := loadPreferences(a.root)
+		if err != nil || loaded != state.Preferences {
+			t.Fatalf("handshake preferences were not restored: %+v, %v", loaded, err)
+		}
+		want := min(value, 300)
+		wantSRTP, wantDTLS, wantWrapA := want, want, want
+		if value <= 0 {
+			wantSRTP, wantDTLS, wantWrapA = 10, 15, 10
+		}
+		if loaded.SRTPHandshakeSeconds != wantSRTP || loaded.DTLSHandshakeSeconds != wantDTLS || loaded.WrapAHandshakeSeconds != wantWrapA {
+			t.Fatalf("invalid timeout normalization for %d: %+v", value, loaded)
+		}
+		args := strings.Join(handshakeArguments(loaded), " ")
+		for flag, want := range map[string]int{"srtp": wantSRTP, "dtls": wantDTLS, "wrapa": wantWrapA} {
+			if !strings.Contains(args, "-"+flag+"-handshake-timeout "+strconv.Itoa(want)+"s") {
+				t.Fatalf("timeout missing from console arguments: %s", args)
+			}
+		}
+	}
+}
+
+func TestLegacyHandshakePreferences(t *testing.T) {
+	root := t.TempDir()
+	if err := writePrivate(filepath.Join(root, "preferences.json"), []byte(`{"language":"ru","theme":"dark","logLines":1000}`)); err != nil {
+		t.Fatal(err)
+	}
+	p, err := loadPreferences(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.SRTPHandshakeSeconds != 10 || p.DTLSHandshakeSeconds != 15 || p.WrapAHandshakeSeconds != 10 {
+		t.Fatalf("legacy preferences lost transport defaults: %+v", p)
+	}
+}

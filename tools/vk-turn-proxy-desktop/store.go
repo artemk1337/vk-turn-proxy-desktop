@@ -25,11 +25,14 @@ const maxStore = 32 << 20
 var defaults = desktopsettings.Defaults()
 
 type Preferences struct {
-	Language          string `json:"language"`
-	Theme             string `json:"theme"`
-	AutoStart         bool   `json:"autoStart"`
-	LogLines          int    `json:"logLines"`
-	RoutingAutoUpdate bool   `json:"routingAutoUpdate"`
+	Language              string `json:"language"`
+	Theme                 string `json:"theme"`
+	AutoStart             bool   `json:"autoStart"`
+	LogLines              int    `json:"logLines"`
+	RoutingAutoUpdate     bool   `json:"routingAutoUpdate"`
+	SRTPHandshakeSeconds  int    `json:"srtpHandshakeSeconds"`
+	DTLSHandshakeSeconds  int    `json:"dtlsHandshakeSeconds"`
+	WrapAHandshakeSeconds int    `json:"wrapAHandshakeSeconds"`
 }
 
 type Profile struct {
@@ -74,6 +77,9 @@ func normalizePreferences(p Preferences) Preferences {
 		p.LogLines = defaults.LogLines.Default
 	}
 	p.LogLines = max(defaults.LogLines.Min, min(defaults.LogLines.Max, p.LogLines))
+	p.SRTPHandshakeSeconds = normalizeTimeout(p.SRTPHandshakeSeconds, defaults.HandshakeTimeouts.SRTP)
+	p.DTLSHandshakeSeconds = normalizeTimeout(p.DTLSHandshakeSeconds, defaults.HandshakeTimeouts.DTLS)
+	p.WrapAHandshakeSeconds = normalizeTimeout(p.WrapAHandshakeSeconds, defaults.HandshakeTimeouts.WrapA)
 	return p
 }
 
@@ -246,4 +252,20 @@ func profileArguments(p Profile, session string) ([]string, error) {
 		args = append(args, "-peer", endpoint)
 	}
 	return append(args, turnArgs...), nil
+}
+
+func normalizeTimeout(seconds int, bounds desktopsettings.LogLines) int {
+	if seconds <= 0 {
+		return bounds.Default
+	}
+	return max(bounds.Min, min(bounds.Max, seconds))
+}
+
+func handshakeArguments(p Preferences) []string {
+	p = normalizePreferences(p)
+	return []string{
+		"-srtp-handshake-timeout", strconv.Itoa(p.SRTPHandshakeSeconds) + "s",
+		"-dtls-handshake-timeout", strconv.Itoa(p.DTLSHandshakeSeconds) + "s",
+		"-wrapa-handshake-timeout", strconv.Itoa(p.WrapAHandshakeSeconds) + "s",
+	}
 }

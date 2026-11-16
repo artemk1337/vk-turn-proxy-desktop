@@ -115,7 +115,7 @@ func helperPeerUID(connection *net.UnixConn) (uint32, error) {
 }
 
 func helperRequestFromOptions(o *options) (helperRequest, error) {
-	allowed := map[string]bool{"config": true, "wg-config": true, "vk-link-file": true, "vk-cookie-file": true, "server": true, "server-transport": true, "turn-transport": true, "conns": true, "mtu": true, "peer": true, "block-ipv6": true, "stop-file": true, "parent-pid": true, "routing-file": true, "desktop-traffic": true}
+	allowed := map[string]bool{"config": true, "wg-config": true, "vk-link-file": true, "vk-cookie-file": true, "server": true, "server-transport": true, "turn-transport": true, "conns": true, "mtu": true, "peer": true, "block-ipv6": true, "stop-file": true, "parent-pid": true, "routing-file": true, "desktop-traffic": true, "srtp-handshake-timeout": true, "dtls-handshake-timeout": true, "wrapa-handshake-timeout": true}
 	for name := range o.set {
 		if !allowed[name] {
 			return helperRequest{}, fmt.Errorf("-%s is unavailable through the desktop helper", name)
@@ -149,7 +149,7 @@ func helperRequestFromOptions(o *options) (helperRequest, error) {
 			return helperRequest{}, err
 		}
 	}
-	for _, pair := range []struct{ name, value string }{{"server", o.serverName}, {"server-transport", o.serverTransport}, {"peer", o.peer}, {"turn-transport", o.turnTransport}, {"conns", strconv.Itoa(o.conns)}, {"mtu", strconv.Itoa(o.mtu)}} {
+	for _, pair := range []struct{ name, value string }{{"server", o.serverName}, {"server-transport", o.serverTransport}, {"peer", o.peer}, {"turn-transport", o.turnTransport}, {"conns", strconv.Itoa(o.conns)}, {"mtu", strconv.Itoa(o.mtu)}, {"srtp-handshake-timeout", o.srtpHandshakeTimeout.String()}, {"dtls-handshake-timeout", o.dtlsHandshakeTimeout.String()}, {"wrapa-handshake-timeout", o.wrapAHandshakeTimeout.String()}} {
 		if o.set[pair.name] {
 			request.Args = append(request.Args, "-"+pair.name, pair.value)
 		}
@@ -173,12 +173,21 @@ func validateHelperRequest(request helperRequest) error {
 	if len(request.Profile) == 0 || len(request.Profile) > wizardInputLimit || len(request.Link) > wizardInputLimit || len(request.Cookies) > wizardInputLimit {
 		return errors.New("invalid desktop helper input size")
 	}
-	if len(request.Args) > 14 {
+	if len(request.Args) > 20 {
 		return errors.New("too many desktop helper arguments")
 	}
 	for i := 0; i < len(request.Args); i++ {
 		switch request.Args[i] {
 		case "-block-ipv6=true", "-block-ipv6=false", "-desktop-traffic=true":
+		case "-srtp-handshake-timeout", "-dtls-handshake-timeout", "-wrapa-handshake-timeout":
+			i++
+			if i >= len(request.Args) {
+				return errors.New("missing handshake timeout")
+			}
+			timeout, err := time.ParseDuration(request.Args[i])
+			if err != nil || timeout < time.Second || timeout > 300*time.Second {
+				return errors.New("invalid handshake timeout")
+			}
 		case "-mtu":
 			i++
 			if i >= len(request.Args) {

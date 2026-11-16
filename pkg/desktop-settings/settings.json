@@ -10,5 +10,10 @@
   "defaultTransport": "srtp",
   "routingUpdateSeconds": 86400,
   "mtu": {"default": 1280, "min": 1000, "max": 1400},
-  "connections": {"default": 30, "min": 1, "max": 120}
+  "connections": {"default": 30, "min": 1, "max": 120},
+  "handshakeTimeouts": {
+    "srtp": {"default": 10, "min": 1, "max": 300},
+    "dtls": {"default": 15, "min": 1, "max": 300},
+    "wrapA": {"default": 10, "min": 1, "max": 300}
+  }
 }

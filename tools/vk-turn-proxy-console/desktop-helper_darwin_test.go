@@ -376,3 +376,34 @@ func TestHelperTURNTransport(t *testing.T) {
 		}
 	}
 }
+
+func TestHelperHandshakeTimeouts(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "profile")
+	writeFile(t, path, "profile")
+	options, err := parseFlags([]string{"-wg-config", path, "-vk-link-file", path, "-server", "test", "-server-transport", "srtp", "-peer", "example.org:443", "-turn-transport", "tcp", "-conns", "30", "-mtu", "1280", "-block-ipv6=true", "-desktop-traffic", "-srtp-handshake-timeout", "60s", "-dtls-handshake-timeout", "1s", "-wrapa-handshake-timeout", "300s"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := helperRequestFromOptions(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateHelperRequest(request); err != nil {
+		t.Fatal(err)
+	}
+	for flag, want := range map[string]string{"-srtp-handshake-timeout": "1m0s", "-dtls-handshake-timeout": "1s", "-wrapa-handshake-timeout": "5m0s"} {
+		index := slices.Index(request.Args, flag)
+		if index < 0 || index+1 >= len(request.Args) || request.Args[index+1] != want {
+			t.Fatalf("missing %s=%s in %v", flag, want, request.Args)
+		}
+		for _, value := range []string{"", "0s", "999ms", "301s", "invalid"} {
+			args := []string{flag, value}
+			if value == "" {
+				args = args[:1]
+			}
+			if err := validateHelperRequest(helperRequest{Profile: []byte("profile"), Args: args}); err == nil {
+				t.Fatalf("accepted %v", args)
+			}
+		}
+	}
+}

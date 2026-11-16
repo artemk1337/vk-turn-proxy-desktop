@@ -18,6 +18,13 @@ func TestDesktopContract(t *testing.T) {
 	if value.RoutingUpdateSeconds != 86400 {
 		t.Fatalf("unexpected routing update interval: %d", value.RoutingUpdateSeconds)
 	}
+	if value.HandshakeTimeouts != (HandshakeTimeouts{
+		SRTP:  LogLines{Default: 10, Min: 1, Max: 300},
+		DTLS:  LogLines{Default: 15, Min: 1, Max: 300},
+		WrapA: LogLines{Default: 10, Min: 1, Max: 300},
+	}) {
+		t.Fatalf("unexpected handshake timeouts: %+v", value.HandshakeTimeouts)
+	}
 	value.Languages[0] = "changed"
 	if Defaults().Languages[0] != "en" {
 		t.Fatal("changing a returned value mutated the desktop contract")

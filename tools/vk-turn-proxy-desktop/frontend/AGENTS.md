@@ -62,3 +62,5 @@ Follow the parent [AGENTS.md](../AGENTS.md).
 - The profile editor defaults to 30 TURN connections and uses the bounds from the shared desktop settings contract. Pass the saved count through `-conns`, including the macOS helper.
 
 - The profile editor exposes tunnel MTU for both profile formats, defaulting to 1280 with bounds 1000–1400 from shared desktop settings. The saved value overrides imported MTU through `-mtu` on the next connection.
+
+- Settings expose global SRTP, DTLS and WRAP-A handshake timeouts as three compact second-valued fields in one row. Persist them in preferences and apply them on the next connection, preserving focused drafts during polling. Bounds and defaults come from the shared desktop settings contract.

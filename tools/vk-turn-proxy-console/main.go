@@ -22,6 +22,7 @@ import (
 
 	"golang.zx2c4.com/wireguard/device"
 
+	desktopsettings "github.com/artemk1337/vk-turn-proxy-desktop/pkg/desktop-settings"
 	"github.com/artemk1337/vk-turn-proxy-desktop/pkg/proxy"
 	"github.com/artemk1337/vk-turn-proxy-desktop/pkg/turnbind"
 )
@@ -41,6 +42,8 @@ type options struct {
 
 	peer, turnTransport, dns, vkLink, turnServer string
 	conns, poolReserve, mtu, uplinkPace          int
+
+	srtpHandshakeTimeout, dtlsHandshakeTimeout, wrapAHandshakeTimeout time.Duration
 
 	defaultRoute     bool
 	defaultRouteWait time.Duration
@@ -79,6 +82,10 @@ func parseFlags(args []string) (*options, error) {
 	fs.IntVar(&o.poolReserve, "pool-reserve", 1, "reserve credential sets: the pool holds (1 + R) × ceil(conns/10) identities; one set rides a network change without a mint, 3 is the app's layout")
 	fs.StringVar(&o.turnTransport, "turn-transport", "", "tcp or udp to the VK relay (default: the server's setting; the app ships tcp)")
 	fs.IntVar(&o.mtu, "mtu", 0, "tunnel MTU (default: the profile's; 1280 when automatic)")
+	timeouts := desktopsettings.Defaults().HandshakeTimeouts
+	fs.DurationVar(&o.srtpHandshakeTimeout, "srtp-handshake-timeout", time.Duration(timeouts.SRTP.Default)*time.Second, "SRTP handshake timeout, 1s…300s")
+	fs.DurationVar(&o.dtlsHandshakeTimeout, "dtls-handshake-timeout", time.Duration(timeouts.DTLS.Default)*time.Second, "DTLS handshake timeout, 1s…300s")
+	fs.DurationVar(&o.wrapAHandshakeTimeout, "wrapa-handshake-timeout", time.Duration(timeouts.WrapA.Default)*time.Second, "WRAP-A handshake timeout, 1s…300s")
 	fs.StringVar(&o.dns, "dns", "", "DNS while the default route is in the tunnel: a comma-separated list replacing the server's dnsServers, or false to leave the system's alone")
 	fs.IntVar(&o.uplinkPace, "uplink-pace", -1, "uplink pacer, KiB/s per connection (0 = off; default: the profile's; 247 is the measured knee)")
 	fs.StringVar(&o.vkLink, "vk-link", "", "a VK call link replacing the profile's list")
@@ -132,6 +139,15 @@ func parseFlags(args []string) (*options, error) {
 	}
 	if o.serverTransport != "srtp" && o.serverTransport != "dtls" {
 		return nil, errors.New("-server-transport must be srtp or dtls")
+	}
+	for name, timeout := range map[string]time.Duration{
+		"srtp-handshake-timeout":  o.srtpHandshakeTimeout,
+		"dtls-handshake-timeout":  o.dtlsHandshakeTimeout,
+		"wrapa-handshake-timeout": o.wrapAHandshakeTimeout,
+	} {
+		if timeout < time.Second || timeout > 300*time.Second {
+			return nil, fmt.Errorf("-%s must be between 1s and 300s", name)
+		}
 	}
 	return o, nil
 }
@@ -615,18 +631,21 @@ func (c *console) startProxy() error {
 	}
 	size := poolSize(st.NumConns, c.o.poolReserve)
 	c.p = proxy.NewProxy(proxy.Config{
-		PeerAddr:         st.PeerAddress,
-		TurnServers:      st.TurnServers,
-		VKLink:           st.VKLinks[0],
-		UseDTLS:          c.st.UseDTLS,
-		UseSrtp:          c.st.UseSrtp,
-		UseUDP:           st.UseUDP,
-		NumConns:         st.NumConns,
-		CredPoolCooldown: st.CredPoolCooldown,
-		CredCachePath:    c.o.credCache,
-		CaptchaSolver:    noCaptchaUI,
-		GOMAXPROCS:       gomax,
-		CredPoolSize:     size,
+		SRTPHandshakeTimeout:  c.o.srtpHandshakeTimeout,
+		DTLSHandshakeTimeout:  c.o.dtlsHandshakeTimeout,
+		WrapAHandshakeTimeout: c.o.wrapAHandshakeTimeout,
+		PeerAddr:              st.PeerAddress,
+		TurnServers:           st.TurnServers,
+		VKLink:                st.VKLinks[0],
+		UseDTLS:               c.st.UseDTLS,
+		UseSrtp:               c.st.UseSrtp,
+		UseUDP:                st.UseUDP,
+		NumConns:              st.NumConns,
+		CredPoolCooldown:      st.CredPoolCooldown,
+		CredCachePath:         c.o.credCache,
+		CaptchaSolver:         noCaptchaUI,
+		GOMAXPROCS:            gomax,
+		CredPoolSize:          size,
 		OnRetry: func(err error, delay time.Duration) {
 			if c.o.desktopTraffic {
 				printDesktopRetry(os.Stdout, err, delay)
