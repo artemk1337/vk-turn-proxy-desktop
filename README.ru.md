@@ -24,7 +24,7 @@
 Установите `.deb` в Debian или Ubuntu и откройте **VK TURN Proxy** из меню приложений
 
 ```sh
-sudo apt install ./vk-turn-proxy-linux-v1.8.0-amd64.deb
+sudo apt install ./vk-turn-proxy-linux-v1.9.0-amd64.deb
 ```
 
 Для portable-версии распакуйте `.tar.gz` и запустите `./vk-turn-proxy-desktop`. Нужны GTK 3, WebKitGTK 4.1, iproute2 и polkit. Для входа через сайт дополнительно нужны Python 3, PyGObject и `gir1.2-webkit2-4.1`. При подключении приложение запросит права администратора.
@@ -49,6 +49,14 @@ sudo /Library/PrivilegedHelperTools/io.github.artemk1337.vkturnproxy.helper --de
 Кнопка **Войти в VK** находится на главном экране. Учётная запись общая для всех профилей, сохраняется отдельно и проверяется каждые пять минут. Через **Cookies** можно загрузить Netscape-файл или вставить `remixsid=…; p=…`. Для входа через сайт нужен [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) в Windows или WebKitGTK (`gir1.2-webkit2-4.1`) в Linux.
 
 В **Настройках** доступны язык, тема, автозапуск и лимит журнала. По умолчанию сохраняются 1000 строк, диапазон настройки от 100 до 10 000, дополнительное ограничение размера составляет 4 МиБ. Закрытие окна сворачивает клиент в трей, если он доступен. **Выход** отключает туннель и закрывает приложение.
+
+## Проверка скорости и трафик
+
+Нажмите **Проверить скорость** под выбором профиля и выберите сервер или автоматический подбор. Проверка измеряет задержку и среднюю скорость скачивания и отдачи за шесть секунд в каждом направлении по трём параллельным потокам. У каждого направления есть прогресс-бар, кнопка **Остановить** отменяет замер.
+
+Проверка следует текущей маршрутизации системы и доступна при отключённом VPN. При выборочной маршрутизации сервер проверки может подключаться напрямую.
+
+Во время подключения нижняя строка статуса показывает текущую скорость загрузки и отдачи в Мбит/с с обновлением раз в секунду.
 
 ## Маршрутизация
 
@@ -94,8 +102,8 @@ sudo "/Applications/VK TURN Proxy.app/Contents/MacOS/vk-turn-proxy-console" -wiz
 
 
 ```sh
-docker build --build-arg VERSION=v1.8.0 --build-arg RUN_TESTS=false --output dist/windows -f Dockerfile.windows .
-docker build --target packages --build-arg VERSION=v1.8.0 --build-arg RUN_TESTS=false --output dist/linux -f Dockerfile.linux .
+docker build --build-arg VERSION=v1.9.0 --build-arg RUN_TESTS=false --output dist/windows -f Dockerfile.windows .
+docker build --target packages --build-arg VERSION=v1.9.0 --build-arg RUN_TESTS=false --output dist/linux -f Dockerfile.linux .
 ```
 
 В `dist` появятся ZIP и установщики Windows, архивы и DEB-пакеты Linux для x64 и ARM64 с контрольными суммами.
@@ -103,7 +111,7 @@ docker build --target packages --build-arg VERSION=v1.8.0 --build-arg RUN_TESTS=
 Пакеты macOS собираются на Mac с Xcode Command Line Tools и Apple SDK
 
 ```sh
-sh installer/macos/package.sh v1.8.0 dist/macos
+sh installer/macos/package.sh v1.9.0 dist/macos
 ```
 
 Команда создаёт ZIP для Intel и Apple Silicon с ad-hoc подписью и контрольными суммами.

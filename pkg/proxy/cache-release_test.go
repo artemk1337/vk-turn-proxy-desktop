@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -62,14 +63,14 @@ func loadReleasedPool(t *testing.T, path, mode string) *credPool {
 	t.Cleanup(cancel)
 	// Load without a periodic saver so a simulated crash leaves exactly the
 	// last durable snapshot, including a crash before the first minute tick.
-	cp := newCredPool(ctx, 2, time.Minute, "", nil)
+	cp := newCredPool(ctx, 1, time.Minute, "", func(bool, int) (string, *TURNCreds, error) { return "", nil, errors.New("unexpected fetch") })
 	cp.mode = mode
 	cp.cachePath = path
 	cp.loadFromDisk()
 	return cp
 }
 
-func TestCachedCredentialsReconnectWithoutCooldown(t *testing.T) {
+func TestCachedCredentialsRespectUnconfirmedCooldown(t *testing.T) {
 	for _, mode := range []string{credCacheModeAnon, credCacheModeCookie} {
 		for _, releasedAt := range []time.Time{{}, time.Now(), time.Now().Add(time.Hour)} {
 			t.Run(mode+releasedAt.Format(time.RFC3339Nano), func(t *testing.T) {
@@ -78,17 +79,25 @@ func TestCachedCredentialsReconnectWithoutCooldown(t *testing.T) {
 				cp.mu.Lock()
 				ready := cp.freshOnLocked(0, relayA)
 				cp.mu.Unlock()
-				if !ready {
-					t.Fatal("cached credential was blocked by previous session history")
+				confirmed := !releasedAt.IsZero() && !releasedAt.After(time.Now())
+				if ready != confirmed {
+					t.Fatalf("ready=%v, confirmed=%v", ready, confirmed)
 				}
 				_, _, slot, _, err := cp.handOut(0, false)
-				if err != nil || slot != 0 {
-					t.Fatalf("cached credential acquisition = slot %d, error %v", slot, err)
-				}
-				cp.saveToDisk()
-				restarted := loadReleasedPool(t, path, mode)
-				if !restarted.isFreshLocked(0) {
-					t.Fatal("interrupted session imposed a cooldown on the next process")
+				if confirmed {
+					if err != nil || slot != 0 {
+						t.Fatalf("confirmed acquisition = %d, %v", slot, err)
+					}
+					cp.saveToDisk()
+					restarted := loadReleasedPool(t, path, mode)
+					if restarted.isFreshLocked(0) {
+						t.Fatal("interrupted reuse lost its cooldown")
+					}
+				} else {
+					var cooldown *QuotaCooldownError
+					if !errors.As(err, &cooldown) || time.Until(cooldown.Until) > credSaturationCooldown || time.Until(cooldown.Until) < 8*time.Minute {
+						t.Fatalf("cooldown = %v", err)
+					}
 				}
 				info, err := os.Stat(path)
 				if err != nil || info.Mode().Perm() != 0o600 {
@@ -99,12 +108,13 @@ func TestCachedCredentialsReconnectWithoutCooldown(t *testing.T) {
 	}
 }
 
-func TestCachedCredentialsDoNotRequireWriteBeforeConnecting(t *testing.T) {
+func TestCachedCredentialsRequireDurableDirtyBarrier(t *testing.T) {
 	path := writeReleasedCache(t, credCacheModeAnon, time.Now())
 	cp := loadReleasedPool(t, path, credCacheModeAnon)
 	cp.cachePath = filepath.Join(t.TempDir(), "missing", "cache.json")
-	if _, _, _, _, err := cp.handOut(0, false); err != nil {
-		t.Fatalf("cache write failure blocked connection: %v", err)
+	cp.pendingRelease = true
+	if _, _, _, _, err := cp.handOut(0, false); err == nil {
+		t.Fatal("allocation ignored failed dirty-cache barrier")
 	}
 }
 
@@ -118,7 +128,7 @@ func TestStoppedCacheKeepsCredentialsWithoutReleaseProof(t *testing.T) {
 	if file.ReleasedAt != 0 || len(file.Creds) != 1 {
 		t.Fatalf("final cache = %+v", file)
 	}
-	if !loadReleasedPool(t, path, credCacheModeAnon).isFreshLocked(0) {
-		t.Fatal("unconfirmed shutdown imposed a cooldown")
+	if loadReleasedPool(t, path, credCacheModeAnon).isFreshLocked(0) {
+		t.Fatal("unconfirmed shutdown lost its cooldown")
 	}
 }

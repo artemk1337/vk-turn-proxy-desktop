@@ -526,6 +526,15 @@ h2 {
   color: var(--muted);
   font-size: 11px;
 }
+.footer-traffic {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: 8px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.footer-metric { display: inline-block; }
 .status-dot {
   width: 6px;
   height: 6px;
@@ -544,6 +553,7 @@ h2 {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 40%;
+  min-width: 0;
 }
 .page-heading {
   display: flex;

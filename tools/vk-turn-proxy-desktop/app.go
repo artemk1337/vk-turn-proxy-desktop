@@ -29,10 +29,12 @@ type State struct {
 }
 
 type ConnectionState struct {
-	State                 string  `json:"state"`
-	TrafficBytesPerSecond float64 `json:"trafficBytesPerSecond"`
-	RetryError            string  `json:"retryError"`
-	RetryAt               int64   `json:"retryAt"`
+	State                  string  `json:"state"`
+	TrafficBytesPerSecond  float64 `json:"trafficBytesPerSecond"`
+	DownloadBytesPerSecond float64 `json:"downloadBytesPerSecond"`
+	UploadBytesPerSecond   float64 `json:"uploadBytesPerSecond"`
+	RetryError             string  `json:"retryError"`
+	RetryAt                int64   `json:"retryAt"`
 }
 type VKState struct {
 	Status   string `json:"status"`
@@ -114,15 +116,20 @@ func (a *App) snapshot() State {
 		vk = VKState{Status: "signed_out"}
 	}
 	traffic := 0.0
-	if a.connection == "connected" {
+	upload, download := 0.0, 0.0
+	if a.connection == "connected" && a.retryError == "" {
 		traffic = a.traffic.rate(time.Now())
+		if traffic > 0 {
+			upload, download = a.traffic.txBytesPerSecond, a.traffic.rxBytesPerSecond
+		}
 	}
 	profiles := slices.Clone(a.profiles.Profiles)
 	for i := range profiles {
 		profiles[i].Routing = cloneRouting(profiles[i].Routing)
 	}
 	return State{Preferences: a.preferences, Defaults: defaults, Profiles: profiles,
-		ActiveID: a.profiles.ActiveID, Connection: ConnectionState{State: a.connection, TrafficBytesPerSecond: traffic, RetryError: a.retryError, RetryAt: a.retryAt}, VK: vk, Error: a.lastError}
+		ActiveID: a.profiles.ActiveID, Connection: ConnectionState{State: a.connection, TrafficBytesPerSecond: traffic,
+			DownloadBytesPerSecond: download, UploadBytesPerSecond: upload, RetryError: a.retryError, RetryAt: a.retryAt}, VK: vk, Error: a.lastError}
 }
 
 func (a *App) GetState() State {

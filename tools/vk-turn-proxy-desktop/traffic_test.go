@@ -150,3 +150,30 @@ func TestBackendExitClearsTraffic(t *testing.T) {
 		t.Fatalf("backend exit retained traffic: %+v", got)
 	}
 }
+
+func TestTrafficDirectionalRatesInConnectionState(t *testing.T) {
+	a := testApp(t)
+	a.connection = "connected"
+	now := time.Now()
+	a.traffic.update(1000, 2000, now.Add(-2*time.Second))
+	a.traffic.update(5000, 8000, now)
+	state := a.GetState().Connection
+	if state.UploadBytesPerSecond != 2000 || state.DownloadBytesPerSecond != 3000 || state.TrafficBytesPerSecond != 5000 {
+		t.Fatalf("directional rates = %+v", state)
+	}
+	a.retryError = "486"
+	state = a.GetState().Connection
+	if state.UploadBytesPerSecond != 0 || state.DownloadBytesPerSecond != 0 || state.TrafficBytesPerSecond != 0 {
+		t.Fatalf("retry retained rates = %+v", state)
+	}
+	a.retryError = ""
+	a.traffic.at = now.Add(-5 * time.Second)
+	state = a.GetState().Connection
+	if state.UploadBytesPerSecond != 0 || state.DownloadBytesPerSecond != 0 {
+		t.Fatalf("stale directional rates = %+v", state)
+	}
+	a.traffic.update(1, 1, now)
+	if a.traffic.txBytesPerSecond != 0 || a.traffic.rxBytesPerSecond != 0 {
+		t.Fatal("counter reset retained directional rates")
+	}
+}

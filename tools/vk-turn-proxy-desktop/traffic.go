@@ -14,6 +14,8 @@ type trafficSample struct {
 	txBytes, rxBytes int64
 	at               time.Time
 	bytesPerSecond   float64
+	txBytesPerSecond float64
+	rxBytesPerSecond float64
 }
 
 func parseTraffic(line string) (int64, int64, bool) {
@@ -31,11 +33,14 @@ func parseTraffic(line string) (int64, int64, bool) {
 }
 
 func (s *trafficSample) update(tx, rx int64, now time.Time) {
-	rate := 0.0
+	txRate, rxRate := 0.0, 0.0
 	if !s.at.IsZero() && now.After(s.at) && tx >= s.txBytes && rx >= s.rxBytes {
-		rate = (float64(tx-s.txBytes) + float64(rx-s.rxBytes)) / now.Sub(s.at).Seconds()
+		seconds := now.Sub(s.at).Seconds()
+		txRate = float64(tx-s.txBytes) / seconds
+		rxRate = float64(rx-s.rxBytes) / seconds
 	}
-	*s = trafficSample{txBytes: tx, rxBytes: rx, at: now, bytesPerSecond: rate}
+	*s = trafficSample{txBytes: tx, rxBytes: rx, at: now, bytesPerSecond: txRate + rxRate,
+		txBytesPerSecond: txRate, rxBytesPerSecond: rxRate}
 }
 
 func (s trafficSample) rate(now time.Time) float64 {

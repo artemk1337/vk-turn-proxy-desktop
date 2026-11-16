@@ -19,11 +19,11 @@ func (a *App) applyRetry(line string, now time.Time) {
 		Error        string `json:"error"`
 		RetryAfterMs int64  `json:"retryAfterMs"`
 	}
-	if len(line) > 2048 || json.Unmarshal([]byte(strings.TrimPrefix(line, retryPrefix)), &event) != nil || event.RetryAfterMs < 0 || event.RetryAfterMs > 60000 {
+	if len(line) > 2048 || json.Unmarshal([]byte(strings.TrimPrefix(line, retryPrefix)), &event) != nil || event.RetryAfterMs < 0 || event.RetryAfterMs > 600000 {
 		return
 	}
 	switch event.Error {
-	case "", "401", "403", "437", "438", "486", "500", "508", "network", "connection":
+	case "", "cooldown", "401", "403", "437", "438", "486", "500", "508", "network", "connection":
 	default:
 		event.Error = "connection"
 	}

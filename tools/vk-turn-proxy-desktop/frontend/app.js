@@ -183,7 +183,7 @@ function renderProfiles() {
 
 function renderConnection() {
   const retrying = Boolean(state.connection.retryError);
-  const waitingQuota = state.connection.retryError === '486';
+  const waitingQuota = ['486', 'cooldown'].includes(state.connection.retryError);
   const phase = retrying ? (waitingQuota ? 'waitingQuota' : 'reconnecting') : state.connection.state;
   const active = !['disconnected', 'failed'].includes(phase);
   const busy = active && phase !== 'connected';
@@ -192,8 +192,11 @@ function renderConnection() {
   let hint = `${phase}Hint`;
   if (phase === 'disconnected' && selected) hint = 'readyHint';
   const retrySeconds = Math.max(0, Math.ceil((state.connection.retryAt - Date.now()) / 1000));
+  const retryTime = retrySeconds >= 60
+    ? t('quotaMinutesSeconds', { minutes: Math.floor(retrySeconds / 60), seconds: retrySeconds % 60 })
+    : t('quotaSeconds', { seconds: retrySeconds });
   $('connection-hint').textContent = retrying
-    ? `${t(`retryError${state.connection.retryError}`)} ${retrySeconds ? t(waitingQuota ? 'quotaRetryHint' : 'retryHint', { seconds: retrySeconds }) : t(waitingQuota ? 'quotaChecking' : 'retryNow')}`
+    ? `${t(`retryError${state.connection.retryError}`)} ${retrySeconds ? t(waitingQuota ? 'quotaRetryHint' : 'retryHint', { seconds: retrySeconds, time: retryTime }) : t(waitingQuota ? 'quotaChecking' : 'retryNow')}`
     : t(hint);
   $('connect-label').textContent = t(
     active ? (phase === 'connected' ? 'disconnect' : 'cancelConnection') : 'connect',
@@ -208,6 +211,16 @@ function renderConnection() {
   $('status-dot').classList.toggle('connected', phase === 'connected');
   $('status-dot').classList.toggle('busy', busy);
   $('footer-status').textContent = t(phase);
+  $('footer-traffic').hidden = phase !== 'connected';
+  for (const [direction, arrow] of [['download', '↓'], ['upload', '↑']]) {
+    const rate = Math.max(0, Number(state.connection[`${direction}BytesPerSecond`]) || 0);
+    const speed = `${(rate * 8 / 1e6).toFixed(2)} ${t('speedMbps')}`;
+    const metric = $(`footer-${direction}`);
+    const label = t(direction === 'download' ? 'speedDownload' : 'speedUpload');
+    metric.textContent = `${arrow} ${speed}`;
+    metric.setAttribute('aria-label', `${label} ${speed}`);
+    metric.title = label;
+  }
   $('footer-profile').textContent = selected?.name || '';
   $('profile-choice').disabled = pending || active || !state.profiles.length;
   $('edit-profile').disabled = pending || active || !selected;

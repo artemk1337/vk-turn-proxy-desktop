@@ -183,7 +183,7 @@ func (cp *credPool) freshOnLocked(slot int, relay string) bool {
 	if slot < 0 || slot >= len(cp.pool) || !entryCredValid(cp.pool[slot]) {
 		return false
 	}
-	return true
+	return !time.Now().Before(cp.quotaReadyAtLocked(slot, relay))
 }
 
 // relaysWithHistoryLocked lists the relays the credential in slot has a

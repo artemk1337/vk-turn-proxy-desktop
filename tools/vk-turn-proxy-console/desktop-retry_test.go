@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"github.com/artemk1337/vk-turn-proxy-desktop/pkg/proxy"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +20,7 @@ func TestDesktopRetryPreservesStatusWithoutSecrets(t *testing.T) {
 		{errors.New("allocate: 486 Allocation Quota Reached"), "486"},
 		{errors.New("failed https://example.test/?token=secret profile-private-key"), "connection"},
 		{nil, ""},
+		{&proxy.QuotaCooldownError{Until: time.Now().Add(9 * time.Minute)}, "cooldown"},
 	} {
 		var out bytes.Buffer
 		printDesktopRetry(&out, test.err, 1500*time.Millisecond)

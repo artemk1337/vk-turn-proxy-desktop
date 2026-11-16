@@ -249,3 +249,24 @@ func TestQuotaRefusalOverridesEarlierGenericRetryReport(t *testing.T) {
 		t.Fatal("successful recovery retained the quota gate")
 	}
 }
+
+func TestCachedQuotaCooldownUsesItsDeadline(t *testing.T) {
+	until := time.Now().Add(9 * time.Minute)
+	failure := &QuotaCooldownError{Until: until}
+	delay := reconnectDelayForError(failure, 1)
+	if delay < 8*time.Minute || delay > 9*time.Minute {
+		t.Fatalf("delay = %s", delay)
+	}
+	var reported error
+	var reportedDelay time.Duration
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	p := &Proxy{ctx: ctx, config: Config{OnRetry: func(err error, delay time.Duration) { reported = err; reportedDelay = delay }}}
+	if !p.reportRetry(failure, delay) || reported != failure || reportedDelay < 8*time.Minute {
+		t.Fatalf("report = %v, %s", reported, reportedDelay)
+	}
+	cancel()
+	if err := p.waitQuotaProbe(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancel = %v", err)
+	}
+}

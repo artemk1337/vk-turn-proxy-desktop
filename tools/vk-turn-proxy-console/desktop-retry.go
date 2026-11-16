@@ -9,6 +9,8 @@ import (
 	"net"
 	"regexp"
 	"time"
+
+	"github.com/artemk1337/vk-turn-proxy-desktop/pkg/proxy"
 )
 
 var turnRetryCode = regexp.MustCompile(`\b(401|403|437|438|486|500|508)\b`)
@@ -21,7 +23,12 @@ func printDesktopRetry(output io.Writer, err error, delay time.Duration) {
 		RetryAfterMs int64  `json:"retryAfterMs"`
 	}{RetryAfterMs: delay.Milliseconds()}
 	if err != nil {
-		event.Error = turnRetryCode.FindString(err.Error())
+		var cooldown *proxy.QuotaCooldownError
+		if errors.As(err, &cooldown) {
+			event.Error = "cooldown"
+		} else {
+			event.Error = turnRetryCode.FindString(err.Error())
+		}
 		if event.Error == "" {
 			event.Error = "connection"
 			var networkError net.Error

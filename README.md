@@ -24,7 +24,7 @@ Approve the administrator prompt to manage the VPN tunnel.
 Install the `.deb` on Debian or Ubuntu and open **VK TURN Proxy** from the applications menu
 
 ```sh
-sudo apt install ./vk-turn-proxy-linux-v1.8.0-amd64.deb
+sudo apt install ./vk-turn-proxy-linux-v1.9.0-amd64.deb
 ```
 
 For portable use, extract the `.tar.gz` and run `./vk-turn-proxy-desktop`. It requires GTK 3, WebKitGTK 4.1, iproute2 and polkit. Website login additionally uses Python 3, PyGObject and `gir1.2-webkit2-4.1`. The app requests administrator access when connecting.
@@ -49,6 +49,14 @@ Manual configs require one peer, IPv4 and `AllowedIPs = 0.0.0.0/0`. SRTP require
 **Sign in to VK** is on the main screen and applies to all profiles. The session is saved separately and checked every five minutes. **Cookies** accepts a Netscape file or `remixsid=…; p=…`. Website login requires [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) on Windows or WebKitGTK (`gir1.2-webkit2-4.1`) on Linux.
 
 **Settings** contains language, theme, autostart and the log limit on all platforms. The log retains 1000 lines by default, adjustable from 100 to 10,000, with a separate 4 MiB cap. Closing the window hides it in the tray when available. **Exit** disconnects and closes the app.
+
+## Speed test and traffic
+
+Click **Speed test** below the profile selector and choose a server or automatic selection. The test measures latency and average download/upload speed over six seconds per direction using three parallel streams. Each direction has a progress bar, and **Stop test** cancels the measurement.
+
+The test follows current system routing. It can run with the VPN disconnected. With split tunneling, the selected test server can use the direct connection.
+
+While connected, the bottom status bar shows current download and upload traffic in Mbit/s, refreshed once per second.
 
 ## Routing
 
@@ -94,8 +102,8 @@ The desktop applications embed the same HTML/CSS/JavaScript frontend in a Wails 
 
 
 ```sh
-docker build --build-arg VERSION=v1.8.0 --build-arg RUN_TESTS=false --output dist/windows -f Dockerfile.windows .
-docker build --target packages --build-arg VERSION=v1.8.0 --build-arg RUN_TESTS=false --output dist/linux -f Dockerfile.linux .
+docker build --build-arg VERSION=v1.9.0 --build-arg RUN_TESTS=false --output dist/windows -f Dockerfile.windows .
+docker build --target packages --build-arg VERSION=v1.9.0 --build-arg RUN_TESTS=false --output dist/linux -f Dockerfile.linux .
 ```
 
 Produces Windows ZIPs/installers and Linux archives/DEB packages for x64 and ARM64, with checksums.
@@ -103,7 +111,7 @@ Produces Windows ZIPs/installers and Linux archives/DEB packages for x64 and ARM
 Build macOS packages on a Mac with Xcode Command Line Tools and the Apple SDK
 
 ```sh
-sh installer/macos/package.sh v1.8.0 dist/macos
+sh installer/macos/package.sh v1.9.0 dist/macos
 ```
 
 Produces ad-hoc signed application ZIPs for Intel and Apple Silicon with checksums.

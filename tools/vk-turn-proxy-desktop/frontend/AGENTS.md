@@ -35,7 +35,8 @@ Follow the parent [AGENTS.md](../AGENTS.md).
 
 ## State and WebView behavior
 
-- After TURN 486, show quota waiting with the countdown to the next one-minute availability check. For other connection retries, show the localized server error and next-attempt countdown in the connection hint. Keep the power button available to cancel, and clear the retry presentation on recovery.
+- Show cached-allocation cooldowns as quota waiting, with an explicit previous-session reason and a minute/second countdown. After TURN 486, show quota waiting with the countdown to the next one-minute availability check. For other connection retries, show the localized server error and next-attempt countdown in the connection hint. Keep the power button available to cancel, and clear the retry presentation on recovery.
+- The footer shows download and upload rates beside the connection status only while connected. Use arrows and localized Mbps units with two decimal places, refresh through the one-second state polling, and hide rates during retries and disconnect. Keep metric labels accessible and profile names ellipsized.
 - Update theme, language and backend state in place. Preserve editor drafts across mode changes, keyboard focus, active connections and log selection/viewport.
 - Use the early theme bootstrap to match the saved theme before paint. Local storage caches the presentation theme only.
 - Dropdowns render application-owned combobox/listbox controls over hidden native selects, preserving their values, change events and form reset behavior. Refresh them after programmatic value/options/disabled changes. Preserve arrows, Home/End, type-ahead, Enter/Space, Escape and Tab behavior.

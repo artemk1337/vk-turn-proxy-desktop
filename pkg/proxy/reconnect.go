@@ -2,12 +2,17 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"math/rand"
 	"time"
 )
 
 // Quota refusals are checked once a minute. Other failures use jittered retries.
 func reconnectDelayForError(err error, attempt int) time.Duration {
+	var cooldown *QuotaCooldownError
+	if errors.As(err, &cooldown) {
+		return max(0, time.Until(cooldown.Until))
+	}
 	if isQuotaError(err) {
 		return time.Minute
 	}
@@ -44,7 +49,11 @@ func (p *Proxy) reportRetry(err error, delay time.Duration) bool {
 			return false
 		}
 		now := time.Now()
-		if isQuotaError(err) {
+		var cooldown *QuotaCooldownError
+		if errors.As(err, &cooldown) {
+			p.quotaError = err
+			p.quotaRetryAt = cooldown.Until
+		} else if isQuotaError(err) {
 			p.quotaError = err
 			if !p.quotaRetryAt.After(now) {
 				p.quotaRetryAt = now.Add(time.Minute)
