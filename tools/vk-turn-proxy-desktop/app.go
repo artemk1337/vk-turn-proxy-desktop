@@ -53,6 +53,7 @@ type App struct {
 	session       *backendSession
 	logs          Logs
 	logBytes      int
+	diskLogs      diskLog
 	lastError     string
 	ctx           context.Context
 	cancel        context.CancelFunc
@@ -69,6 +70,10 @@ func newApp(root, backend string, quit func()) (*App, error) {
 	}
 	prefs, err := loadPreferences(root)
 	warning := err
+	diskLogs := diskLog{root: filepath.Join(root, "logs")}
+	if err := diskLogs.prepare(time.Now()); err != nil {
+		warning = errors.Join(warning, errors.New("Connection logs could not be saved to disk."))
+	}
 	profiles, err := loadProfiles(root)
 	if err != nil {
 		warning = errors.Join(warning, errors.New("Saved profiles could not be loaded. Import your profiles again."))
@@ -83,7 +88,8 @@ func newApp(root, backend string, quit func()) (*App, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	a := &App{root: root, backend: backend, preferences: prefs, profiles: profiles, routingData: routingdata.NewStore(filepath.Join(root, "routing-data")),
 		cookies: string(cookies), vk: VKState{Status: "unknown"}, connection: "disconnected",
-		logs: Logs{Lines: []string{}}, ctx: ctx, cancel: cancel, quit: quit, frontendReady: make(chan struct{})}
+		logs: Logs{Lines: []string{}}, diskLogs: diskLog{root: diskLogs.root, day: diskLogs.day}, ctx: ctx, cancel: cancel, quit: quit, frontendReady: make(chan struct{})}
+	a.diskLogs.start(a.diskLogs.writeBatch, a.reportDiskLog)
 	if warning != nil {
 		a.lastError = warning.Error()
 	}
@@ -362,5 +368,27 @@ func (a *App) Exit() {
 	if session != nil {
 		<-session.done
 	}
+	a.diskLogs.close()
 	a.quit()
+}
+
+func (a *App) reportDiskLog(message string) {
+	a.mu.Lock()
+	a.lastError = message
+	a.mu.Unlock()
+}
+
+func (a *App) shutdown() {
+	a.mu.Lock()
+	a.closing = true
+	session := a.session
+	a.mu.Unlock()
+	if session != nil {
+		_ = writePrivate(session.stopFile, nil)
+	}
+	a.cancel()
+	if session != nil {
+		<-session.done
+	}
+	a.diskLogs.close()
 }

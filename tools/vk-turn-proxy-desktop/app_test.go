@@ -91,7 +91,7 @@ func TestProfileSelectionAndDeletionPersistBeforeState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer restored.cancel()
+	defer restored.shutdown()
 	if restored.GetState().ActiveID != "two" {
 		t.Fatal("last selected profile was not restored after restart")
 	}
@@ -218,7 +218,7 @@ func TestCorruptStorageRecoversWithVisibleWarning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("recoverable store error prevented startup: %v", err)
 	}
-	t.Cleanup(a.cancel)
+	t.Cleanup(a.shutdown)
 	state := a.GetState()
 	if state.Error == "" || state.VK.Status != "signed_out" || state.Profiles == nil || len(state.Profiles) != 0 || state.Preferences.Theme != defaults.DefaultTheme {
 		t.Fatalf("corrupt store was not recovered: %+v", state)

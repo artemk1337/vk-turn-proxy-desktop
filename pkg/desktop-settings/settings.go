@@ -17,6 +17,7 @@ type Settings struct {
 	DefaultTheme         string    `json:"defaultTheme"`
 	LogLines             LogLines  `json:"logLines"`
 	LogMaxBytes          int       `json:"logMaxBytes"`
+	LogRetentionDays     int       `json:"logRetentionDays"`
 	VKCheckSeconds       int       `json:"vkCheckSeconds"`
 	DefaultTransport     string    `json:"defaultTransport"`
 	RoutingUpdateSeconds int       `json:"routingUpdateSeconds"`

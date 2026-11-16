@@ -1027,6 +1027,7 @@ func (p *Proxy) startConnections() error {
 		// outage, ~4 min of which was waiting for the next watchdog
 		// tick after slots 0/2/4 had already cooled down at 21:29:00
 		// but no goroutine was listening for the broadcast.
+		slotCh := p.wakeChannelFor(err)
 		saturated, total, longest := p.credPool.saturationSnapshot()
 		available, _, _ := p.credPool.snapshotSize()
 		// canWaitForCooldown requires longest > 0 — without an active
@@ -1039,7 +1040,6 @@ func (p *Proxy) startConnections() error {
 			waitFor := longest + allSaturatedWaitSafety
 			log.Printf("proxy: bootstrap attempt %d/%d failed (%v), %d/%d slots saturated, 0 available — waiting up to %s for slot-available signal",
 				attempt, maxBootstrapAttempts, err, saturated, total, waitFor.Round(time.Second))
-			slotCh := p.wakeChannelFor(err)
 			select {
 			case <-slotCh:
 				log.Printf("proxy: bootstrap attempt %d/%d woken by slot-available signal, retrying immediately",

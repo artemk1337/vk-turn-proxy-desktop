@@ -164,9 +164,9 @@ func main() {
 			}
 			return true
 		},
-		OnShutdown: func(context.Context) { app.cancel(); closeTray() },
+		OnShutdown: func(context.Context) { app.shutdown(); closeTray() },
 	})
-	app.cancel()
+	app.shutdown()
 	closeTray()
 	if err != nil {
 		failStartup(err)

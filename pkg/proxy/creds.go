@@ -1744,6 +1744,7 @@ func newCredPool(ctx context.Context, size int, cooldown time.Duration, cachePat
 			}
 			timer.Stop()
 		}
+		cp.wakeCachedCredentials()
 		// Periodic-save goroutine keeps lastUsedAt fresh on disk so a
 		// kill-mid-session leaves the file reflecting current activity.
 		// See credPeriodicSaveInterval comment.

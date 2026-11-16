@@ -5,6 +5,7 @@
   "defaultTheme": "light",
   "logLines": {"default": 1000, "min": 100, "max": 10000},
   "logMaxBytes": 4194304,
+  "logRetentionDays": 7,
   "vkCheckSeconds": 300,
   "defaultTransport": "srtp",
   "routingUpdateSeconds": 86400,

@@ -148,6 +148,7 @@ func (a *App) waitBackend(command *exec.Cmd, finish func(), reader *os.File, dir
 		a.lastError = "VPN backend stopped. Check the connection log."
 	}
 	a.mu.Unlock()
+	a.diskLogs.flush()
 	close(session.done)
 }
 
@@ -226,6 +227,7 @@ func (a *App) appendLog(line string) {
 		}
 		return
 	}
+	a.diskLogs.enqueue(time.Now(), line)
 	phase := logPhase(line)
 	if connectionRank(a.connection) > 0 && connectionRank(phase) > connectionRank(a.connection) {
 		a.connection = phase
