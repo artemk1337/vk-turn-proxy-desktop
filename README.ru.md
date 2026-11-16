@@ -24,7 +24,7 @@
 Установите `.deb` в Debian или Ubuntu и откройте **VK TURN Proxy** из меню приложений
 
 ```sh
-sudo apt install ./vk-turn-proxy-linux-v1.9.1-amd64.deb
+sudo apt install ./vk-turn-proxy-linux-v1.10.0-amd64.deb
 ```
 
 Для portable-версии распакуйте `.tar.gz` и запустите `./vk-turn-proxy-desktop`. Нужны GTK 3, WebKitGTK 4.1, iproute2 и polkit. Для входа через сайт дополнительно нужны Python 3, PyGObject и `gir1.2-webkit2-4.1`. При подключении приложение запросит права администратора.
@@ -108,8 +108,8 @@ sudo "/Applications/VK TURN Proxy.app/Contents/MacOS/vk-turn-proxy-console" -wiz
 
 
 ```sh
-docker build --build-arg VERSION=v1.9.1 --build-arg RUN_TESTS=false --output dist/windows -f Dockerfile.windows .
-docker build --target packages --build-arg VERSION=v1.9.1 --build-arg RUN_TESTS=false --output dist/linux -f Dockerfile.linux .
+docker build --build-arg VERSION=v1.10.0 --build-arg RUN_TESTS=false --output dist/windows -f Dockerfile.windows .
+docker build --target packages --build-arg VERSION=v1.10.0 --build-arg RUN_TESTS=false --output dist/linux -f Dockerfile.linux .
 ```
 
 В `dist` появятся ZIP и установщики Windows, архивы и DEB-пакеты Linux для x64 и ARM64 с контрольными суммами.
@@ -117,7 +117,7 @@ docker build --target packages --build-arg VERSION=v1.9.1 --build-arg RUN_TESTS=
 Пакеты macOS собираются на Mac с Xcode Command Line Tools и Apple SDK
 
 ```sh
-sh installer/macos/package.sh v1.9.1 dist/macos
+sh installer/macos/package.sh v1.10.0 dist/macos
 ```
 
 Команда создаёт ZIP для Intel и Apple Silicon с ad-hoc подписью и контрольными суммами.

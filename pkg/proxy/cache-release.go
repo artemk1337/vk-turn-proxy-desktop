@@ -20,7 +20,8 @@ func (p *Proxy) saveStoppedCache() {
 		<-cp.saverDone
 	}
 	if p.dealloc.started.Load() == p.dealloc.confirmed.Load() &&
-		p.dealloc.unconfirmed.Load() == 0 && p.dealloc.legsLeft.Load() == 0 {
+		p.dealloc.unconfirmed.Load() == 0 && p.dealloc.legsLeft.Load() == 0 &&
+		p.recoveryErr == nil && (p.config.CredCachePath == "" || !p.recovery.hasPending()) {
 		cp.saveCache(time.Now())
 		return
 	}

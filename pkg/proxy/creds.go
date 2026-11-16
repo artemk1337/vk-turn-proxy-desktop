@@ -974,6 +974,7 @@ const cascadePauseDuration = 30 * time.Second
 // is intentionally excluded — those are per-process and shouldn't survive
 // across launches.
 type credCacheFile struct {
+	RecoveryGeneration string `json:"recovery_generation,omitempty"`
 	// ReleasedAt certifies that every previous allocation was released.
 	ReleasedAt int64            `json:"released_at,omitempty"`
 	Version    int              `json:"version"`
@@ -1014,20 +1015,21 @@ type credCacheEntry struct {
 // across the fetch call) so a long captcha solve on one slot cannot
 // block fast-path get() calls on other conns' fresh slots.
 type credPool struct {
-	cacheCooldowns  map[quotaHistoryKey]time.Time
-	relayUsedAt     map[string]time.Time
-	inheritedUntil  time.Time
-	cacheRestarted  bool
-	pendingRelease  bool
-	cacheReleasedAt time.Time
-	onRelayMarked   func(addr string, stamp uint64) // told, outside the lock, of every relay newly marked UNREACHABLE with the proxy's hand-out stamp at the mark — the proxy ends the sessions handed that relay before it (relaymarkend.go)
-	handSeq         uint64                          // the hand-out counter, moved UNDER THE LOCK at every address handed out (get → stampHandOutLocked); a mark reads it there and the notice carries it (relaymarkend.go)
-	handStamp       map[int]uint64                  // the stamp of each connection's latest hand-out, by connIdx (recordHandOut reads it)
-	mu              sync.Mutex
-	pool            []credPoolEntry // indexed by slot index; grown lazily up to size
-	nextGen         uint64          // last claim stamp handed out — see credPoolEntry.gen
-	size            int             // pool capacity, derived from NumConns via poolSizeForNumConns
-	mode            string          // credCacheModeAnon / credCacheModeCookie — fixed at creation; what the cache file is stamped with and checked against
+	recoveryGeneration string
+	cacheCooldowns     map[quotaHistoryKey]time.Time
+	relayUsedAt        map[string]time.Time
+	inheritedUntil     time.Time
+	cacheRestarted     bool
+	pendingRelease     bool
+	cacheReleasedAt    time.Time
+	onRelayMarked      func(addr string, stamp uint64) // told, outside the lock, of every relay newly marked UNREACHABLE with the proxy's hand-out stamp at the mark — the proxy ends the sessions handed that relay before it (relaymarkend.go)
+	handSeq            uint64                          // the hand-out counter, moved UNDER THE LOCK at every address handed out (get → stampHandOutLocked); a mark reads it there and the notice carries it (relaymarkend.go)
+	handStamp          map[int]uint64                  // the stamp of each connection's latest hand-out, by connIdx (recordHandOut reads it)
+	mu                 sync.Mutex
+	pool               []credPoolEntry // indexed by slot index; grown lazily up to size
+	nextGen            uint64          // last claim stamp handed out — see credPoolEntry.gen
+	size               int             // pool capacity, derived from NumConns via poolSizeForNumConns
+	mode               string          // credCacheModeAnon / credCacheModeCookie — fixed at creation; what the cache file is stamped with and checked against
 
 	// The relay health (relayhealth.go, credpool_relay.go): the standing of
 	// every relay address by host:port, the user's override setting, each
@@ -1524,6 +1526,7 @@ func (cp *credPool) loadFromDisk() {
 		log.Printf("credpool: load: the cache holds %s identities and this pool mints %s — ignoring file (it is rewritten at the next save)", fileMode, cp.mode)
 		return
 	}
+	cp.recoveryGeneration = f.RecoveryGeneration
 
 	released := cp.consumeReleasedCache(f)
 	cp.mu.Lock()
@@ -1617,9 +1620,10 @@ func (cp *credPool) saveCache(releasedAt time.Time) {
 	now := time.Now()
 	cp.mu.Lock()
 	f := credCacheFile{
-		Version: credCacheVersion,
-		SavedAt: now.Unix(),
-		Mode:    cp.mode,
+		RecoveryGeneration: cp.recoveryGeneration,
+		Version:            credCacheVersion,
+		SavedAt:            now.Unix(),
+		Mode:               cp.mode,
 	}
 	for slot, entry := range cp.pool {
 		if entry.creds == nil {

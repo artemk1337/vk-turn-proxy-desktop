@@ -54,7 +54,8 @@ type Config struct {
 	SeededTURN *TURNCreds
 	// CredCachePath persists TURN credentials across client launches.
 	// Empty disables persistence. The caller protects the file, which contains
-	// session tokens with approximately eight hours of validity.
+	// session tokens with approximately eight hours of validity. UDP allocation
+	// recovery uses a private sibling file with the ".allocations" suffix.
 	CredCachePath string
 
 	// UplinkSynthMbit and UplinkSynthSec drive the paced synthetic uplink in
@@ -182,9 +183,11 @@ type Stats struct {
 
 // Proxy manages the DTLS+TURN tunnel to the peer server.
 type Proxy struct {
-	config Config
-	ctx    context.Context // global lifetime (wgTurnOn → wgTurnOff)
-	cancel context.CancelFunc
+	config      Config
+	ctx         context.Context // global lifetime (wgTurnOn → wgTurnOff)
+	cancel      context.CancelFunc
+	recovery    *allocationRecovery
+	recoveryErr error
 
 	peer   *net.UDPAddr
 	linkID string
@@ -648,6 +651,7 @@ func NewProxy(cfg Config) *Proxy {
 			poolSize = 2 * n
 		}
 	}
+	p.recovery, p.recoveryErr = prepareAllocationRecovery(ctx, cfg.CredCachePath, cfg.UseUDP)
 	p.credPool = newCredPool(ctx, poolSize, cfg.CredPoolCooldown, cfg.CredCachePath, p.fetchFreshCreds)
 	p.credPool.setColdStartTarget(cfg.NumConns)
 	// A relay the pool marks UNREACHABLE ends the sessions still on it
@@ -3324,6 +3328,9 @@ func (p *Proxy) runTURN(ctx context.Context, turnAddr string, creds *TURNCreds, 
 	}
 
 	finishSocket(nil)
+	if p.config.UseUDP {
+		turnConn = p.trackUDPAllocation(turnConn, turnAddr, creds)
+	}
 	if connIdx == 0 {
 		log.Printf("proxy: [conn %d] TURN control socket local=%s relay=%s", connIdx, turnConn.LocalAddr(), turnAddr)
 	}
@@ -3362,7 +3369,7 @@ func (p *Proxy) runTURN(ctx context.Context, turnAddr string, creds *TURNCreds, 
 	gave.lifeOf().fresh()
 	p.dealloc.started.Add(1)
 	finishAllocate := p.traceTransportStage(ctx, connIdx, turnAddr, "TURN allocation", creds)
-	relayConn, err := client.Allocate()
+	relayConn, err := p.allocateTURN(client, turnConn)
 	finishAllocate(err)
 	if err != nil {
 		return p.relayUnanswered(connIdx, slotIdx, creds, turnAddr, attempt, fmt.Errorf("TURN allocate: %w", err))
@@ -5557,6 +5564,9 @@ func (p *Proxy) setupSRTPSession(ctx context.Context, turnAddr string, creds *TU
 	}
 
 	finishSocket(nil)
+	if p.config.UseUDP {
+		ctlConn = p.trackUDPAllocation(ctlConn, turnAddr, creds)
+	}
 	if connIdx == 0 {
 		log.Printf("proxy: [conn %d] TURN control socket local=%s relay=%s", connIdx, ctlConn.LocalAddr(), turnAddr)
 	}
@@ -5593,7 +5603,7 @@ func (p *Proxy) setupSRTPSession(ctx context.Context, turnAddr string, creds *TU
 	gave.lifeOf().fresh()
 	p.dealloc.started.Add(1)
 	finishAllocate := p.traceTransportStage(ctx, connIdx, turnAddr, "TURN allocation", creds)
-	relayConn, err := tc.Allocate()
+	relayConn, err := p.allocateTURN(tc, ctlConn)
 	finishAllocate(err)
 	if err != nil {
 		tc.Close()
