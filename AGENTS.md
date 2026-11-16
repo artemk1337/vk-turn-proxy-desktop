@@ -10,6 +10,7 @@ This repository develops the desktop GUI and console client for Windows, Linux a
 - `tools/vk-turn-proxy-desktop` owns the shared Wails v2 GUI, embedded HTML/CSS/JavaScript and fonts, preferences, profiles and platform session control. See its local [AGENTS.md](tools/vk-turn-proxy-desktop/AGENTS.md).
 - `tools/vk-turn-proxy-windows` retains legacy Walk sources and isolated WebView2 authentication support. See its local [AGENTS.md](tools/vk-turn-proxy-windows/AGENTS.md).
 - `tools/vk-turn-proxy-linux` retains legacy GTK sources and optional isolated WebKitGTK authentication helpers. See its local [AGENTS.md](tools/vk-turn-proxy-linux/AGENTS.md).
+- `docs/demo` builds the browser demo from the shared frontend with an in-memory Wails bridge. GitHub Pages serves simulated connections and data. `.github/workflows/demo-pages.yml` publishes it independently of application releases.
 - `installer` owns platform installation and removal. `Dockerfile.windows` and `Dockerfile.linux` build release packages.
 - `installer/macos` builds native Apple SDK application bundles. See its local [AGENTS.md](installer/macos/AGENTS.md).
 

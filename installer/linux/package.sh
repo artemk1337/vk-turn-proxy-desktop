@@ -28,8 +28,8 @@ for arch in amd64 arm64; do
     install -m 644 assets/logo-256.png "$portable/vk-turn-proxy-desktop.png"
     install -m 644 docs/*.md "$portable/docs/"
     install -m 644 docs/*.md "$package/usr/share/doc/vk-turn-proxy-desktop/docs/"
-    install -m 644 docs/images/main-window-*.png "$portable/docs/images/"
-    install -m 644 docs/images/main-window-*.png "$package/usr/share/doc/vk-turn-proxy-desktop/docs/images/"
+    install -m 644 docs/images/main-window-*.png docs/images/interface-demo-*.gif "$portable/docs/images/"
+    install -m 644 docs/images/main-window-*.png docs/images/interface-demo-*.gif "$package/usr/share/doc/vk-turn-proxy-desktop/docs/images/"
     for file in README.md README.en.md README.ru.md LICENSE NOTICE.md; do
         install -m 644 "$file" "$portable/$file"
     done

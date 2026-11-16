@@ -83,6 +83,9 @@ EOF
         image="docs/images/main-window-${language}.png"
         install -m 644 "$image" "$package/$image"
         install -m 644 "$image" "$resources/$image"
+        image="docs/images/interface-demo-${language}.gif"
+        install -m 644 "$image" "$package/$image"
+        install -m 644 "$image" "$resources/$image"
     done
     install -m 644 tools/vk-turn-proxy-desktop/frontend/fonts/LICENSE.txt "$resources/FONT-LICENSE.txt"
     for module in github.com/wailsapp/wails/v2 github.com/energye/systray github.com/godbus/dbus/v5; do

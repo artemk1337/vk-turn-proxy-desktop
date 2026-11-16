@@ -22,7 +22,7 @@ Approve the administrator prompt to manage the VPN tunnel.
 Install the `.deb` on Debian or Ubuntu and open **VK TURN Proxy** from the applications menu
 
 ```sh
-sudo apt install ./vk-turn-proxy-linux-v1.11.0-amd64.deb
+sudo apt install ./vk-turn-proxy-linux-v1.12.0-amd64.deb
 ```
 
 For portable use, extract the `.tar.gz` and run `./vk-turn-proxy-desktop`. It requires GTK 3, WebKitGTK 4.1, iproute2 and polkit. Website login additionally uses Python 3, PyGObject and `gir1.2-webkit2-4.1`. The app requests administrator access when connecting.

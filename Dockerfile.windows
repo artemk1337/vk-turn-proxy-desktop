@@ -8,7 +8,7 @@ RUN go mod download && go install github.com/akavel/rsrc@v0.10.2
 COPY . .
 ARG RUN_TESTS=true
 RUN if [ "$RUN_TESTS" = true ]; then go test -count=1 ./tools/vk-turn-proxy-desktop ./tools/vk-turn-proxy-console ./tools/vk-turn-proxy-windows ./pkg/vk-auth ./pkg/wireguard-profile ./pkg/proxy/srtpwrap ./pkg/turnbind; fi
-ARG VERSION=v1.11.0
+ARG VERSION=v1.12.0
 RUN set -eu; mkdir -p /out; for arch in amd64 arm64; do \
       dir="/out/vk-turn-proxy-windows-${VERSION}-${arch}"; mkdir -p "$dir"; \
       rsrc -arch "$arch" -ico assets/logo.ico -manifest tools/vk-turn-proxy-windows/app.manifest -o "tools/vk-turn-proxy-desktop/rsrc_windows_${arch}.syso"; \
@@ -17,7 +17,7 @@ RUN set -eu; mkdir -p /out; for arch in amd64 arm64; do \
       GOOS=windows GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o "$dir/vk-turn-proxy-console.exe" ./tools/vk-turn-proxy-console; \
       cp README.md README.en.md README.ru.md LICENSE NOTICE.md "$dir/"; \
       cp assets/logo.ico "$dir/app.ico"; \
-      mkdir -p "$dir/docs/images"; cp docs/*.md "$dir/docs/"; cp docs/images/main-window-*.png "$dir/docs/images/"; \
+      mkdir -p "$dir/docs/images"; cp docs/*.md "$dir/docs/"; cp docs/images/main-window-*.png docs/images/interface-demo-*.gif "$dir/docs/images/"; \
       cat "$(go list -m -f '{{.Dir}}' github.com/energye/systray)/LICENSE" "$(go list -m -f '{{.Dir}}' github.com/godbus/dbus/v5)/LICENSE" > "$dir/DESKTOP-LICENSES.txt"; \
       cp tools/vk-turn-proxy-desktop/frontend/fonts/LICENSE.txt "$dir/FONT-LICENSE.txt"; \
       cp third_party/walk/LICENSE "$dir/WALK-LICENSE.txt"; \

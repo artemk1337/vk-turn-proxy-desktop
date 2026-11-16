@@ -4,7 +4,9 @@
 
 VPN client for Windows, Linux and macOS that sends WireGuard traffic through VK TURN relays.
 
-![Main window in English, dark theme](docs/images/main-window-en.png)
+[![Interface demo](docs/images/interface-demo-en.gif)](https://artemk1337.github.io/vk-turn-proxy-desktop/?lang=en)
+
+[Try the interface](https://artemk1337.github.io/vk-turn-proxy-desktop/?lang=en)
 
 ## Install
 
@@ -19,7 +21,7 @@ Run `*-setup.exe`. For portable use, extract the ZIP and open `vk-turn-proxy-win
 On Debian or Ubuntu, install the `.deb` and open **VK TURN Proxy** from the applications menu
 
 ```sh
-sudo apt install ./vk-turn-proxy-linux-v1.11.0-amd64.deb
+sudo apt install ./vk-turn-proxy-linux-v1.12.0-amd64.deb
 ```
 
 For portable use, extract the `.tar.gz` and run `./vk-turn-proxy-desktop`. Requires GTK 3, WebKitGTK 4.1, iproute2 and polkit. Website login also requires Python 3, PyGObject and `gir1.2-webkit2-4.1`.
