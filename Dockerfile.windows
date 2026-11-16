@@ -16,8 +16,9 @@ RUN set -eu; mkdir -p /out; for arch in amd64 arm64; do \
       rsrc -arch "$arch" -ico assets/logo.ico -manifest tools/vk-turn-proxy-windows/app.manifest -o "tools/vk-turn-proxy-console/rsrc_windows_${arch}.syso"; \
       GOOS=windows GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o "$dir/vk-turn-proxy-console.exe" ./tools/vk-turn-proxy-console; \
       cp README.md README.en.md README.ru.md LICENSE NOTICE.md "$dir/"; \
+      for file in README.md README.en.md README.ru.md; do sed "s|docs/images/|https://raw.githubusercontent.com/artemk1337/vk-turn-proxy-desktop/${VERSION}/docs/images/|g" "$file" > "$dir/$file"; done; \
       cp assets/logo.ico "$dir/app.ico"; \
-      mkdir -p "$dir/docs/images"; cp docs/*.md "$dir/docs/"; cp docs/images/main-window-*.png docs/images/interface-demo-*.gif "$dir/docs/images/"; \
+      mkdir -p "$dir/docs"; cp docs/*.md "$dir/docs/"; \
       cat "$(go list -m -f '{{.Dir}}' github.com/energye/systray)/LICENSE" "$(go list -m -f '{{.Dir}}' github.com/godbus/dbus/v5)/LICENSE" > "$dir/DESKTOP-LICENSES.txt"; \
       cp tools/vk-turn-proxy-desktop/frontend/fonts/LICENSE.txt "$dir/FONT-LICENSE.txt"; \
       cp third_party/walk/LICENSE "$dir/WALK-LICENSE.txt"; \

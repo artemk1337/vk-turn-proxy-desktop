@@ -17,7 +17,7 @@ for arch in amd64 arm64; do
     mkdir -p "$portable" "$package/DEBIAN" "$package/usr/lib/vk-turn-proxy-desktop" \
         "$package/usr/bin" "$package/usr/share/applications" \
         "$package/usr/share/icons/hicolor/256x256/apps" "$package/usr/share/doc/vk-turn-proxy-desktop" \
-        "$portable/docs/images" "$package/usr/share/doc/vk-turn-proxy-desktop/docs/images"
+        "$portable/docs" "$package/usr/share/doc/vk-turn-proxy-desktop/docs"
 
     install -m 644 tools/vk-turn-proxy-desktop/frontend/fonts/LICENSE.txt "$portable/FONT-LICENSE.txt"
     for module in github.com/wailsapp/wails/v2 github.com/energye/systray github.com/godbus/dbus/v5; do
@@ -28,8 +28,6 @@ for arch in amd64 arm64; do
     install -m 644 assets/logo-256.png "$portable/vk-turn-proxy-desktop.png"
     install -m 644 docs/*.md "$portable/docs/"
     install -m 644 docs/*.md "$package/usr/share/doc/vk-turn-proxy-desktop/docs/"
-    install -m 644 docs/images/main-window-*.png docs/images/interface-demo-*.gif "$portable/docs/images/"
-    install -m 644 docs/images/main-window-*.png docs/images/interface-demo-*.gif "$package/usr/share/doc/vk-turn-proxy-desktop/docs/images/"
     for file in README.md README.en.md README.ru.md LICENSE NOTICE.md; do
         install -m 644 "$file" "$portable/$file"
     done
@@ -43,6 +41,11 @@ for arch in amd64 arm64; do
     install -m 644 "$portable/vk-turn-proxy-desktop.png" "$package/usr/share/icons/hicolor/256x256/apps/"
     for file in README.md README.en.md README.ru.md LICENSE NOTICE.md; do
         install -m 644 "$file" "$package/usr/share/doc/vk-turn-proxy-desktop/$file"
+    done
+
+    for file in README.md README.en.md README.ru.md; do
+        sed "s|docs/images/|https://raw.githubusercontent.com/artemk1337/vk-turn-proxy-desktop/${version}/docs/images/|g" "$file" > "$portable/$file"
+        install -m 644 "$portable/$file" "$package/usr/share/doc/vk-turn-proxy-desktop/$file"
     done
 
     install -m 644 "$portable/DESKTOP-LICENSES.txt" "$portable/FONT-LICENSE.txt" "$package/usr/share/doc/vk-turn-proxy-desktop/"

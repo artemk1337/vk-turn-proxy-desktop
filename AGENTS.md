@@ -29,7 +29,7 @@ Routing policies are per-profile snapshots. Missing routing settings preserve fu
 - Describe imported profiles by their data format in documentation and UI. Keep upstream attribution in Related projects and NOTICE.md.
 - Release notes contain only a concise list of changes. Keep setup instructions in the README and build details in `docs/build.<language>.md`.
 - Build Windows and Linux releases locally in Docker. Build macOS application ZIPs natively with the Apple SDK. Publish all platforms for x64 and ARM64 with checksums.
-- Use `assets/logo.png` as the canonical logo for frontend branding and platform application icons. Include localized main-window screenshots in both READMEs and their release packages.
+- Use `assets/logo.png` as the canonical logo for frontend branding and platform application icons. Keep screenshots and demo GIFs in the repository and READMEs. Exclude them from release assets and packages. Package README image links point to the release tag on GitHub.
 - Run console, profile, preferences and transport tests. Verify Windows startup, autostart lifecycle, installer install/uninstall, both languages and themes, and connection progress before publishing.
 
 - Keep iOS project files, unrelated server tools and upstream workflow definitions out of this desktop repository. Preserve attribution and license notices when reusing code.

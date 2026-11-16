@@ -42,7 +42,7 @@ for arch in amd64 arm64; do
     app="$package/VK TURN Proxy.app"
     binaries="$app/Contents/MacOS"
     resources="$app/Contents/Resources"
-    mkdir -p "$binaries" "$resources" "$package/docs/images" "$resources/docs/images"
+    mkdir -p "$binaries" "$resources" "$package/docs" "$resources/docs"
 
     GOOS=darwin GOARCH="$arch" CGO_ENABLED=1 CC="clang -arch $clang_arch" \
       CGO_CFLAGS="${CGO_CFLAGS:-} -mmacosx-version-min=12.0" \
@@ -79,13 +79,9 @@ EOF
     done
     install -m 644 docs/*.md "$package/docs/"
     install -m 644 docs/*.md "$resources/docs/"
-    for language in en ru; do
-        image="docs/images/main-window-${language}.png"
-        install -m 644 "$image" "$package/$image"
-        install -m 644 "$image" "$resources/$image"
-        image="docs/images/interface-demo-${language}.gif"
-        install -m 644 "$image" "$package/$image"
-        install -m 644 "$image" "$resources/$image"
+    for file in README.md README.en.md README.ru.md; do
+        sed "s|docs/images/|https://raw.githubusercontent.com/artemk1337/vk-turn-proxy-desktop/${version}/docs/images/|g" "$file" > "$package/$file"
+        install -m 644 "$package/$file" "$resources/$file"
     done
     install -m 644 tools/vk-turn-proxy-desktop/frontend/fonts/LICENSE.txt "$resources/FONT-LICENSE.txt"
     for module in github.com/wailsapp/wails/v2 github.com/energye/systray github.com/godbus/dbus/v5; do
