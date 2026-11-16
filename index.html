@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>VK TURN Proxy</title>
+    <link rel="icon" href="logo.png" type="image/png" />
+    <script>
+      try {
+        const theme = localStorage.getItem('vkturn.theme');
+        if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+      } catch (_) {}
+    </script>
+    <link rel="preload" href="fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="controls.css" />
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="routing.css" />
+    <link rel="stylesheet" href="demo.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <img class="brand-logo" src="logo.png" alt="" width="32" height="32" />
+          <div class="brand-name">VK TURN<span>Proxy</span></div>
+        </div>
+        <nav aria-label="Navigation" data-i18n-aria="navigation">
+          <button class="nav-item active" data-page="connection" aria-current="page">
+            <span data-icon="power"></span><span data-i18n="connection">Connection</span>
+          </button>
+          <button class="nav-item" data-page="routing">
+            <span data-icon="routing"></span><span data-i18n="routing">Routing</span>
+          </button>
+          <button class="nav-item" data-page="logs">
+            <span data-icon="log"></span><span data-i18n="logs">Log</span>
+          </button>
+          <button class="nav-item" data-page="settings">
+            <span data-icon="settings"></span><span data-i18n="settings">Settings</span>
+          </button>
+        </nav>
+        <div class="sidebar-bottom">
+          <button id="theme-toggle" class="nav-item">
+            <span id="theme-icon" data-icon="moon"></span><span id="theme-label">Dark theme</span>
+          </button>
+          <button id="exit" class="nav-item">
+            <span data-icon="exit"></span><span data-i18n="exit">Exit</span>
+          </button>
+        </div>
+      </aside>
+
+      <main>
+        <div
+          id="notifications"
+          class="notifications"
+          aria-live="polite"
+          aria-relevant="additions text"
+          data-i18n-aria="notifications"
+          aria-label="Notifications"
+        ></div>
+        <section
+          id="connection-page"
+          class="page connection-page"
+          aria-label="Connection"
+          data-i18n-aria="connection"
+        >
+          <div class="connection-core">
+            <button type="button" class="power-orbit" id="power-orbit" disabled aria-label="Connect">
+              <span class="power-flash" aria-hidden="true"><span id="power-flash-band"></span></span>
+              <span class="power-symbol" data-icon="power" aria-hidden="true"></span>
+              <span id="connect-label">Connect</span>
+              <span class="orbit-spinner" aria-hidden="true"></span>
+            </button>
+            <h1 id="connection-status" aria-live="polite">Disconnected</h1>
+            <p id="connection-hint" class="status-hint">Select a profile to connect</p>
+            <div class="profile-controls">
+              <label class="sr-only" for="profile-choice" data-i18n="profile">Profile</label>
+              <div class="profile-select">
+                <span data-icon="profile"></span
+                ><select id="profile-choice">
+                  <option value="">Add a profile</option>
+                </select>
+              </div>
+              <button
+                id="edit-profile"
+                class="icon-button"
+                data-i18n-aria="editProfile"
+                aria-label="Edit profile"
+              >
+                <span data-icon="edit"></span>
+              </button>
+              <button
+                id="add-profile"
+                class="icon-button"
+                data-i18n-aria="addProfile"
+                aria-label="Add profile"
+              >
+                <span data-icon="plus"></span>
+              </button>
+            </div>
+            <button id="speed-open" class="text-button speed-open" data-i18n="speedTitle">Speed test</button>
+            <p id="speed-summary" class="speed-summary" hidden></p>
+          </div>
+          <div class="account-section">
+            <div class="account-identity">
+              <span class="account-avatar" data-icon="profile"></span>
+              <div>
+                <h2 data-i18n="vkAccount">VK account</h2>
+                <p id="vk-status">Anonymous access</p>
+              </div>
+            </div>
+            <div class="account-actions">
+              <button id="vk-login" class="secondary" data-i18n="login">Sign in to VK</button
+              ><button id="cookies-open" class="secondary" data-i18n="cookies">Import cookies</button
+              ><button id="vk-logout" class="text-button" data-i18n="logout" hidden>Sign out</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="logs-page" class="page" hidden>
+          <header class="page-heading">
+            <div>
+              <h1 data-i18n="logs">Log</h1>
+              <p data-i18n="logsHint">Connection events and diagnostics</p>
+            </div>
+            <button id="clear-logs" class="secondary" data-i18n="clear" hidden>Clear</button>
+          </header>
+          <div
+            id="log-output"
+            class="log-output"
+            tabindex="0"
+            role="region"
+            aria-label="Connection log"
+            data-i18n-aria="connectionLog"
+          >
+            <div id="log-lines"></div>
+            <p id="logs-empty" class="empty-log" data-i18n="noLogs">Connection events will appear here.</p>
+          </div>
+          <div class="log-footer">
+            <span id="log-count"></span
+            ><button id="follow-log" class="text-button" data-i18n="latest" hidden>Go to latest</button>
+          </div>
+        </section>
+
+        <section id="routing-page" class="page" hidden>
+          <header class="page-heading"><h1 data-i18n="routing">Routing</h1></header>
+          <label class="field"><span data-i18n="profile">Profile</span><select id="routing-profile"></select></label>
+          <p id="routing-empty" class="routing-hint" data-i18n="routingAddProfile" hidden>Add a connection profile first.</p>
+          <div id="routing-fields">
+            <section class="routing-section">
+              <h2 data-i18n="routingMode">Mode</h2>
+              <div id="routing-mode" class="segmented-control routing-modes" role="group" data-segmented data-i18n-aria="routingMode" aria-label="Mode">
+                <button type="button" data-value="" data-i18n="routingAll">All through VPN</button>
+                <button type="button" data-value="exclude" data-i18n="routingExclude">VPN with exceptions</button>
+                <button type="button" data-value="include" data-i18n="routingInclude">Selected through VPN</button>
+              </div>
+              <p id="routing-summary" class="routing-hint"></p>
+            </section>
+            <section id="routing-rules" class="routing-section">
+              <div class="routing-row"><div><h2 data-i18n="routingGeoIP">GeoIP regions</h2><p class="routing-hint" data-i18n="routingGeoIPHint">IP address location by country</p></div><button type="button" class="secondary" data-routing-picker="geoip" data-i18n="routingChooseRegions">Choose regions</button></div>
+              <div id="routing-selected-geoip" class="routing-selected"></div>
+              <div class="routing-row"><div><h2 data-i18n="routingGeoSite">GeoSite sets</h2><p class="routing-hint" data-i18n="routingGeoSiteHint">Service domains and categories</p></div><button type="button" class="secondary" data-routing-picker="geosite" data-i18n="routingChooseSets">Choose sets</button></div>
+              <div id="routing-selected-geosite" class="routing-selected"></div>
+              <p class="routing-hint routing-domain-hint" data-i18n="routingDomainHint">Domain rules follow system DNS responses. Apps using their own encrypted DNS or cached addresses may bypass these rules. Routing supports IPv4.</p>
+              <label class="field routing-custom"><span data-i18n="routingCustom">Custom domains, IP addresses and subnets</span><textarea id="routing-custom" rows="3" spellcheck="false" placeholder="example.org&#10;192.0.2.0/24&#10;203.0.113.10"></textarea></label>
+              <label class="routing-check"><input type="checkbox" id="routing-local" /><span data-i18n="routingLocal">Local network always direct</span></label>
+            </section>
+            <section class="routing-section">
+              <div class="routing-row"><h2 data-i18n="routingDatabases">Database updates</h2><button type="button" id="routing-sync" class="secondary" data-i18n="routingSync">Synchronize</button></div>
+              <p class="routing-hint" data-i18n="routingSources">GeoIP and GeoSite from Loyalsoldier</p>
+              <div class="routing-row routing-updates"><label class="routing-check"><input type="checkbox" id="routing-auto" /><span data-i18n="routingAuto">Update automatically every day</span></label><span id="routing-updated" class="routing-hint" role="status"></span></div>
+            </section>
+            <p id="routing-error" class="form-error" role="alert" hidden></p>
+            <footer class="routing-footer"><span id="routing-save-hint" class="routing-hint" role="status"></span><button type="button" id="routing-save" class="primary" data-i18n="save">Save</button></footer>
+          </div>
+        </section>
+
+        <section id="settings-page" class="page" hidden>
+          <header class="page-heading">
+            <div>
+              <h1 data-i18n="settings">Settings</h1>
+            </div>
+          </header>
+          <div class="settings-group">
+            <div class="setting-row">
+              <div>
+                <h2 data-i18n="appearance">Appearance</h2>
+                <p data-i18n="appearanceHint">Choose a comfortable palette</p>
+              </div>
+              <div
+                id="theme-choice"
+                class="segmented-control theme-options"
+                role="group"
+                data-segmented
+                data-i18n-aria="appearance"
+                aria-label="Appearance"
+              >
+                <button data-theme-choice="light" data-value="light">
+                  <span data-icon="sun"></span><span data-i18n="light">Light</span></button
+                ><button data-theme-choice="dark" data-value="dark">
+                  <span data-icon="moon"></span><span data-i18n="dark">Dark</span>
+                </button>
+              </div>
+            </div>
+            <div class="setting-row">
+              <label for="language"
+                ><h2 data-i18n="language">Language</h2>
+                <p data-i18n="languageHint">Applied immediately</p></label
+              ><select id="language">
+                <option value="en">English</option>
+                <option value="ru">Русский</option>
+              </select>
+            </div>
+          </div>
+          <div class="settings-group">
+            <div class="setting-row">
+              <label for="autostart"
+                ><h2 data-i18n="autostart">Launch at sign-in</h2>
+                <p data-i18n="autostartHint">Open the app when you sign in</p></label
+              ><input id="autostart" class="switch" type="checkbox" role="switch" />
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="field-label">
+                  <h2 id="handshake-timeouts-label" data-i18n="handshakeTimeouts">Handshake timeouts, s</h2>
+                  <span class="help">
+                  <button type="button" class="help-button" aria-describedby="handshake-timeouts-help" data-i18n-aria="handshakeTimeouts" aria-label="Handshake timeouts, s"><span aria-hidden="true">i</span></button>
+                  <span id="handshake-timeouts-help" class="help-tooltip" role="tooltip" data-i18n="handshakeTimeoutsHelp">Maximum wait for one transport handshake attempt, from 1 to 300 seconds. Applied on the next connection.</span>
+                  </span>
+                </div>
+              </div>
+              <div class="timeout-fields" role="group" aria-labelledby="handshake-timeouts-label">
+                <label for="srtp-handshake-timeout">SRTP<input id="srtp-handshake-timeout" type="number" min="1" max="300" step="1" required aria-describedby="handshake-timeouts-help" /></label>
+                <label for="dtls-handshake-timeout">DTLS<input id="dtls-handshake-timeout" type="number" min="1" max="300" step="1" required aria-describedby="handshake-timeouts-help" /></label>
+                <label for="wrapa-handshake-timeout">WRAP-A<input id="wrapa-handshake-timeout" type="number" min="1" max="300" step="1" required aria-describedby="handshake-timeouts-help" /></label>
+              </div>
+            </div>
+            <div class="setting-row">
+              <label for="log-limit"
+                ><h2 data-i18n="logLimit">Log line limit</h2>
+                <p id="log-limit-hint"></p></label
+              ><input
+                id="log-limit"
+                type="number"
+                min="100"
+                max="10000"
+                step="100"
+                value="1000"
+                aria-describedby="log-limit-hint"
+              />
+            </div>
+          </div>
+        </section>
+        <footer class="statusbar">
+          <span class="status-dot" id="status-dot"></span><span id="footer-status">Disconnected</span
+          ><span id="footer-traffic" class="footer-traffic" role="group" data-i18n-aria="liveTraffic" aria-label="Connection traffic" hidden>
+            <span id="footer-download" class="footer-metric" role="img"></span>
+            <span id="footer-upload" class="footer-metric" role="img"></span>
+          </span><span id="footer-profile"></span>
+        </footer>
+      </main>
+    </div>
+
+    <dialog id="speed-dialog" aria-labelledby="speed-title">
+      <header class="dialog-heading">
+        <h2 id="speed-title" data-i18n="speedTitle">Speed test</h2>
+        <button type="button" class="icon-button close-dialog" data-i18n-aria="close" aria-label="Close"><span data-icon="close"></span></button>
+      </header>
+      <div class="dialog-body">
+        <label class="field"><span data-i18n="speedServer">Test server</span><select id="speed-server"></select></label>
+        <p class="dialog-description" data-i18n="speedRouteHint">Uses current system routing. With split tunneling, the test server may connect directly.</p>
+        <p id="speed-context" class="speed-summary"></p>
+        <dl class="speed-results">
+          <div>
+            <dt id="speed-latency-label" data-i18n="speedLatency">Latency</dt>
+            <dd><span id="speed-latency">—</span></dd>
+          </div>
+          <div>
+            <dt id="speed-download-label" data-i18n="speedDownload">Download</dt>
+            <dd><span id="speed-download">—</span><div id="speed-download-progress" class="speed-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-labelledby="speed-download-label"><span class="speed-progress-fill"></span></div></dd>
+          </div>
+          <div>
+            <dt id="speed-upload-label" data-i18n="speedUpload">Upload</dt>
+            <dd><span id="speed-upload">—</span><div id="speed-upload-progress" class="speed-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-labelledby="speed-upload-label"><span class="speed-progress-fill"></span></div></dd>
+          </div>
+        </dl>
+        <p id="speed-phase" class="speed-summary" role="status" aria-live="polite"></p>
+        <p id="speed-error" class="form-error" role="alert" hidden></p>
+      </div>
+      <footer class="dialog-footer"><button id="speed-start" type="button" class="primary" data-i18n="speedStart">Start test</button></footer>
+    </dialog>
+
+    <dialog id="profile-dialog" aria-labelledby="profile-title">
+      <form id="profile-form">
+        <header class="dialog-heading">
+          <h2 id="profile-title">Connection profile</h2>
+          <button type="button" class="icon-button close-dialog" data-i18n-aria="close" aria-label="Close">
+            <span data-icon="close"></span>
+          </button>
+        </header>
+        <div class="dialog-body">
+          <label class="field"
+            ><span data-i18n="profileName">Profile name</span
+            ><input
+              id="profile-name"
+              name="name"
+              maxlength="120"
+              required
+              autocomplete="off"
+              data-i18n-placeholder="namePlaceholder"
+              placeholder="Personal profile"
+          /></label>
+          <div
+            id="profile-mode"
+            class="segmented-control editor-tabs"
+            role="group"
+            data-segmented
+            data-i18n-aria="profileFormat"
+            aria-label="Profile format"
+          >
+            <button type="button" data-mode="link" data-value="link" data-i18n="profileLink">
+              Link / JSON</button
+            ><button type="button" data-mode="wireguard" data-value="wireguard" data-i18n="wireguard">
+              WireGuard + VK call
+            </button>
+          </div>
+          <div id="link-fields">
+            <label class="field"
+              ><span class="field-heading"
+                ><span data-i18n="connectionLink">Connection link or JSON</span
+                ><button
+                  type="button"
+                  class="text-button open-file"
+                  data-target="profile-text"
+                  data-i18n="openFile"
+                >
+                  Open file
+                </button></span
+              ><textarea
+                id="profile-text"
+                name="profileText"
+                rows="5"
+                spellcheck="false"
+                placeholder="vkturnproxy://import?data=<base64 JSON>"
+              ></textarea>
+            </label>
+          </div>
+          <div id="wireguard-fields" hidden>
+            <label class="field"
+              ><span class="field-heading"
+                ><span data-i18n="wgConfig">WireGuard configuration</span
+                ><button
+                  type="button"
+                  class="text-button open-file"
+                  data-target="wg-config"
+                  data-i18n="openConf"
+                >
+                  Open .conf
+                </button></span
+              ><textarea
+                id="wg-config"
+                name="wgConfig"
+                rows="4"
+                spellcheck="false"
+                placeholder="[Interface]&#10;PrivateKey = …&#10;Address = …&#10;&#10;[Peer]&#10;PublicKey = …&#10;Endpoint = …"
+              ></textarea>
+            </label>
+            <label class="field"
+              ><span data-i18n="vkCall">VK call link</span
+              ><input
+                id="vk-link"
+                name="vkLink"
+                placeholder="https://vk.com/call/join/…"
+                autocomplete="off"
+                spellcheck="false"
+            /></label>
+            <div class="field-pair">
+              <label class="field"
+                ><span>Endpoint</span
+                ><input
+                  id="endpoint"
+                  name="endpoint"
+                  placeholder="1.2.3.4:51820"
+                  autocomplete="off"
+                  spellcheck="false"
+              /></label>
+              <div class="field">
+                <div class="field-label">
+                  <label for="transport" data-i18n="transport">Transport</label>
+                  <span class="help">
+                    <button
+                      type="button"
+                      class="help-button"
+                      aria-describedby="transport-help"
+                      data-i18n-aria="transportHelp"
+                      aria-label="Transport help"
+                    >
+                      <span aria-hidden="true">i</span>
+                    </button>
+                    <span id="transport-help" class="help-tooltip" role="tooltip" data-i18n="transportHint"
+                      >Choose SRTP if the server uses the -srtp flag. Otherwise, choose DTLS.</span
+                    >
+                  </span>
+                </div>
+                <select id="transport" aria-describedby="transport-help">
+                  <option value="srtp">SRTP</option>
+                  <option value="dtls">DTLS</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="field">
+            <div class="field-label">
+              <label for="turn-transport" data-i18n="turnTransport">TURN connection</label>
+              <span class="help">
+                <button type="button" class="help-button" aria-describedby="turn-transport-help" data-i18n-aria="turnTransport" aria-label="TURN connection"><span aria-hidden="true">i</span></button>
+                <span id="turn-transport-help" class="help-tooltip" role="tooltip" data-i18n="turnTransportHint">UDP can reduce latency when the network allows it. Reconnect to apply.</span>
+              </span>
+            </div>
+            <select id="turn-transport" aria-describedby="turn-transport-help">
+              <option value="" data-i18n="turnTransportProfile">From profile</option>
+              <option value="tcp">TCP</option>
+              <option value="udp">UDP</option>
+            </select>
+          </div>
+          <div class="field">
+            <div class="field-label">
+              <label for="num-connections" data-i18n="numConnections">TURN connections</label>
+              <span class="help">
+                <button type="button" class="help-button" aria-describedby="num-connections-help" data-i18n-aria="numConnectionsHelp" aria-label="TURN connections help"><span aria-hidden="true">i</span></button>
+                <span id="num-connections-help" class="help-tooltip" role="tooltip" data-i18n="numConnectionsHint">Recommended connection count is 30. Each channel uses a separate TURN allocation. Fewer channels reduce quota usage and may reduce speed. Error 486 on the first allocation means the server quota is already exhausted.</span>
+              </span>
+            </div>
+            <input id="num-connections" type="number" min="1" max="120" step="1" value="30" required aria-describedby="num-connections-help" />
+          </div>
+          <div class="field">
+            <div class="field-label">
+              <label for="mtu">MTU</label>
+              <span class="help">
+                <button type="button" class="help-button" aria-describedby="mtu-help" data-i18n-aria="mtuHelp" aria-label="MTU help"><span aria-hidden="true">i</span></button>
+                <span id="mtu-help" class="help-tooltip" role="tooltip" data-i18n="mtuHint">Recommended MTU is 1280 bytes. Maximum packet size inside the tunnel in bytes. Reconnect to apply.</span>
+              </span>
+            </div>
+            <input id="mtu" type="number" min="1000" max="1400" step="1" value="1280" aria-describedby="mtu-help" required />
+          </div>
+          <p id="profile-error" class="form-error" role="alert" hidden></p>
+        </div>
+        <footer class="dialog-footer">
+          <button id="delete-profile" type="button" class="text-button danger" data-i18n="deleteProfile">
+            Delete profile</button
+          ><span class="spacer"></span
+          ><button type="button" class="secondary close-dialog" data-i18n="cancel">Cancel</button
+          ><button type="submit" class="primary" data-i18n="save">Save</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <dialog id="routing-picker" aria-labelledby="routing-picker-title">
+      <form id="routing-picker-form">
+        <header class="dialog-heading"><h2 id="routing-picker-title">GeoIP regions</h2><button type="button" class="icon-button close-dialog" data-i18n-aria="close" aria-label="Close"><span data-icon="close"></span></button></header>
+        <div class="dialog-body routing-picker-body">
+          <label class="field"><span data-i18n="routingSearch">Search</span><input id="routing-picker-search" type="search" autocomplete="off" data-i18n-placeholder="routingSearchHint" placeholder="Name or code…" /></label>
+          <div id="routing-picker-list" role="group" data-i18n-aria="routingAvailable" aria-label="Available sets"></div>
+        </div>
+        <footer class="dialog-footer"><span id="routing-picker-count" class="routing-hint" aria-live="polite"></span><span class="spacer"></span><button type="button" class="secondary close-dialog" data-i18n="cancel">Cancel</button><button type="submit" class="primary" data-i18n="routingApply">Apply</button></footer>
+      </form>
+    </dialog>
+
+    <dialog id="cookies-dialog" aria-labelledby="cookies-title">
+      <form id="cookies-form">
+        <header class="dialog-heading">
+          <h2 id="cookies-title" data-i18n="cookies">Import cookies</h2>
+          <button type="button" class="icon-button close-dialog" data-i18n-aria="close" aria-label="Close">
+            <span data-icon="close"></span>
+          </button>
+        </header>
+        <div class="dialog-body">
+          <p class="dialog-description" data-i18n="cookiesHint">
+            Paste VK cookies. They will be validated and stored separately from preferences.
+          </p>
+          <label class="field"
+            ><span class="field-heading"
+              ><span>Cookies</span
+              ><button
+                type="button"
+                class="text-button open-file"
+                data-target="cookies-text"
+                data-i18n="openFile"
+              >
+                Open file
+              </button></span
+            ><textarea
+              id="cookies-text"
+              rows="7"
+              required
+              spellcheck="false"
+              autocomplete="off"
+              placeholder="remixsid=…; p=…"
+            ></textarea>
+          </label>
+          <p id="cookies-error" class="form-error" role="alert" hidden></p>
+        </div>
+        <footer class="dialog-footer">
+          <span class="spacer"></span
+          ><button type="button" class="secondary close-dialog" data-i18n="cancel">Cancel</button
+          ><button class="primary" type="submit" data-i18n="import">Import</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <dialog id="confirm-dialog" aria-labelledby="confirm-title">
+      <form method="dialog">
+        <header class="dialog-heading">
+          <h2 id="confirm-title" data-i18n="deleteProfile">Delete profile</h2>
+        </header>
+        <div class="dialog-body"><p id="confirm-message"></p></div>
+        <footer class="dialog-footer">
+          <button value="cancel" class="secondary" data-i18n="cancel">Cancel</button
+          ><button value="delete" class="primary destructive" data-i18n="delete">Delete</button>
+        </footer>
+      </form>
+    </dialog>
+    <input id="profile-file" type="file" accept=".json,.txt,.conf" hidden />
+    <script type="module">await import("./demo.js"); await import("./app.js");</script>
+  </body>
+</html>
