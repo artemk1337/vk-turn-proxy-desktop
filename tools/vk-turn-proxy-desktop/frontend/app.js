@@ -270,17 +270,21 @@ function renderUpdates() {
     available: 'updateAvailable', error: 'updateFailed', development: 'updateDevelopment',
   };
   $('update-status').textContent = t(statusKeys[update.status] || 'updateIdle', { version: update.latestVersion });
-  $('check-updates').disabled = update.status === 'checking';
+  const downloading = ['choosing', 'downloading'].includes(update.downloadStatus);
+  $('check-updates').disabled = update.status === 'checking' || downloading;
+  $('open-update').disabled = downloading;
+  $('update-notice').disabled = downloading;
+  if (update.downloadStatus) {
+    const progress = update.total > 0 ? `${Math.floor(update.downloaded / update.total * 100)}%` : `${((update.downloaded || 0) / 1048576).toFixed(1)} MB`;
+    $('update-status').textContent = t(`updateDownload_${update.downloadStatus}`, { progress, path: update.path });
+  }
   $('open-update').hidden = !available;
   $('update-notice').hidden = !available;
   $('update-notice-label').textContent = available ? t('updateAvailable', { version: update.latestVersion }) : '';
 }
 
-function openUpdate() {
-  const url = state.updates?.url;
-  if (!/^https:\/\/github\.com\/artemk1337\/vk-turn-proxy-desktop\/releases\/tag\/v?[0-9]+\.[0-9]+\.[0-9]+$/.test(url || '')) return;
-  if (typeof window.runtime?.BrowserOpenURL !== 'function') throw new Error(t('desktopOnly'));
-  window.runtime.BrowserOpenURL(url);
+async function openUpdate() {
+  await mutate('DownloadUpdate');
 }
 
 function switchPage(next) {

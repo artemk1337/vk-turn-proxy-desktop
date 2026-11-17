@@ -53,6 +53,9 @@ func main() {
 	if err != nil {
 		failStartup(err)
 	}
+	app.updateSave = func(name string) (string, error) {
+		return wailsruntime.SaveFileDialog(ctx, wailsruntime.SaveDialogOptions{DefaultFilename: name})
+	}
 	assets, err := fs.Sub(frontend, "frontend")
 	if err != nil {
 		failStartup(err)

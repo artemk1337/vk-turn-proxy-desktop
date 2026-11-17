@@ -677,6 +677,9 @@ h2 {
 .update-row > div:first-child {
   min-width: 0;
 }
+#update-status {
+  overflow-wrap: anywhere;
+}
 .update-actions button {
   white-space: normal;
 }

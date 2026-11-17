@@ -1,5 +1,9 @@
 export const messages = {
   en: {
+    updateDownload_choosing: "Choose where to save the update…",
+    updateDownload_downloading: "Downloading update… {progress}",
+    updateDownload_downloaded: "Saved to {path}. Open the package to install the update.",
+    updateDownload_failed: "Could not download the update. Try again.",
     appUpdates: "App updates",
     appVersion: "Installed version {version}",
     checkUpdates: "Check for updates",
@@ -202,6 +206,10 @@ export const messages = {
     starting: 'Starting…',
   },
   ru: {
+    updateDownload_choosing: "Выберите место сохранения обновления…",
+    updateDownload_downloading: "Скачивание обновления… {progress}",
+    updateDownload_downloaded: "Сохранено в {path}. Откройте пакет для установки обновления.",
+    updateDownload_failed: "Не удалось скачать обновление. Попробуйте ещё раз.",
     appUpdates: "Обновления приложения",
     appVersion: "Установлена версия {version}",
     checkUpdates: "Проверить обновления",

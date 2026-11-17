@@ -113,6 +113,7 @@ function updateSpeed() {
 
 window.go = { main: { App: {
   CheckForUpdates: async () => clone(state),
+  DownloadUpdate: async () => unavailable(),
   GetState: async () => clone(state),
   FrontendReady: async () => {},
   SavePreferences: async (preferences) => {
