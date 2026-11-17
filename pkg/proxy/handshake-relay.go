@@ -16,16 +16,13 @@ func (e *transportHandshakeError) Unwrap() error { return e.error }
 // A handshake timeout changes only this connection's relay preference.
 // TURN control replies remain valid health evidence for other connections.
 func (cp *credPool) noteHandshakeResult(ctx context.Context, connIdx int, generation uint64, addr string, start time.Time, err error) {
-	if ctx.Err() != nil {
-		return
-	}
 	var networkError net.Error
 	if err != nil && !errors.Is(err, context.DeadlineExceeded) && !(errors.As(err, &networkError) && networkError.Timeout()) {
 		return
 	}
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
-	if start.Before(cp.health.pathChangedAt) || cp.handStamp[connIdx] != generation {
+	if ctx.Err() != nil || start.Before(cp.health.pathChangedAt) || cp.handStamp[connIdx] != generation {
 		return
 	}
 	if err == nil {
