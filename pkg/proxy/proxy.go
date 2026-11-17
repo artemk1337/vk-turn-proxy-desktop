@@ -2358,6 +2358,7 @@ func (p *Proxy) runDTLSSession(sessCtx context.Context, linkID string, readyCh c
 	finishHandshake := p.traceTransportStage(connCtx, connIdx, turnAddr, "DTLS handshake to "+p.peer.String(), creds)
 	dtlsConn, err := dialDTLS(connCtx, conn1, p.peer, p.config.DTLSHandshakeTimeout)
 	finishHandshake(err)
+	p.credPool.noteHandshakeResult(sessCtx, connIdx, sessGen, turnAddr, dtlsStart, err)
 	if err != nil {
 		connCancel()
 		select {
@@ -5176,6 +5177,10 @@ func (p *Proxy) runSRTPSession(sessCtx context.Context, linkID string, readyCh c
 	// Set up TURN allocation and DTLS-SRTP handshake to the peer.
 	sessStart := time.Now()
 	srtpConn, err := p.setupSRTPSession(connCtx, turnAddr, creds, credSlot, connIdx, &gave)
+	var handshakeError *transportHandshakeError
+	if err == nil || errors.As(err, &handshakeError) {
+		p.credPool.noteHandshakeResult(connCtx, connIdx, sessGen, turnAddr, sessStart, err)
+	}
 	if err != nil {
 		// Mirror runDTLSSession's error attribution so quota / auth
 		// failures land on the correct slot.
@@ -5706,7 +5711,7 @@ func (p *Proxy) setupSRTPSession(ctx context.Context, turnAddr string, creds *TU
 	hsCancel()
 	if err != nil {
 		abortSetup()
-		return nil, fmt.Errorf("srtp handshake: %w", err)
+		return nil, &transportHandshakeError{fmt.Errorf("srtp handshake: %w", err)}
 	}
 
 	return &srtpSessionConn{

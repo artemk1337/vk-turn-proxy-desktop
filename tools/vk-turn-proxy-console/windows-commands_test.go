@@ -60,6 +60,18 @@ func TestWindowsRepinRecreatesRouteOnNewInterface(t *testing.T) {
 	}
 }
 
+func TestWindowsDefaultRouteSuppressesModuleProgress(t *testing.T) {
+	script := decodePowerShell(windowsDefaultRouteCommand())
+	progress := strings.Index(script, "$ProgressPreference='SilentlyContinue';")
+	query := strings.Index(script, "Get-NetRoute ")
+	if progress < 0 || query < 0 || progress > query {
+		t.Fatal("disable module progress before querying routes", script)
+	}
+	if !strings.Contains(script, "$ErrorActionPreference='Stop';") {
+		t.Fatal("route query errors must still fail the command", script)
+	}
+}
+
 func TestWindowsDefaultRouteAndDNSParsing(t *testing.T) {
 	gw, ok := parseWindowsDefaultRoute(`{"NextHop":"192.168.1.1","InterfaceAlias":"Wi-Fi"}`)
 	if !ok || gw.IP != "192.168.1.1" || gw.Iface != "Wi-Fi" {
