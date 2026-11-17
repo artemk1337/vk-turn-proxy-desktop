@@ -24,6 +24,10 @@ const maxReleaseBytes = 1024 * 1024
 var releaseVersionPattern = regexp.MustCompile(`^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
 
 type UpdateState struct {
+	DownloadStatus string `json:"downloadStatus"`
+	Downloaded     int64  `json:"downloaded"`
+	Total          int64  `json:"total"`
+	Path           string `json:"path"`
 	CurrentVersion string `json:"currentVersion"`
 	LatestVersion  string `json:"latestVersion"`
 	Status         string `json:"status"`
@@ -118,7 +122,7 @@ func (a *App) CheckForUpdates() State {
 
 func (a *App) checkForUpdates(manual bool) State {
 	a.mu.Lock()
-	if a.closing || a.updates.Status == "checking" {
+	if a.closing || a.updates.Status == "checking" || a.updates.DownloadStatus == "downloading" || a.updates.DownloadStatus == "choosing" {
 		state := a.snapshot()
 		a.mu.Unlock()
 		return state
@@ -149,6 +153,10 @@ func (a *App) checkForUpdates(manual bool) State {
 		if err != nil {
 			a.updates.Status = "error"
 			return
+		}
+		if a.updates.LatestVersion != latest {
+			a.updates.DownloadStatus = ""
+			a.updates.Path = ""
 		}
 		a.updates.LatestVersion = latest
 		a.updates.URL = ""

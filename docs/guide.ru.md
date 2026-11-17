@@ -22,7 +22,7 @@
 Установите `.deb` в Debian или Ubuntu и откройте **VK TURN Proxy** из меню приложений
 
 ```sh
-sudo apt install ./vk-turn-proxy-linux-v1.14.0-amd64.deb
+sudo apt install ./vk-turn-proxy-linux-v1.15.0-amd64.deb
 ```
 
 Для portable-версии распакуйте `.tar.gz` и запустите `./vk-turn-proxy-desktop`. Нужны GTK 3, WebKitGTK 4.1, iproute2 и polkit. Для входа через сайт дополнительно нужны Python 3, PyGObject и `gir1.2-webkit2-4.1`. При подключении приложение запросит права администратора.

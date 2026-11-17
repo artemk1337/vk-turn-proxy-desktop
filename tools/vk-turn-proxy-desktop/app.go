@@ -43,6 +43,7 @@ type VKState struct {
 }
 
 type App struct {
+	updateSave    func(string) (string, error)
 	updates       UpdateState
 	updateAttempt time.Time
 	updateFetch   func(context.Context) (string, error)
