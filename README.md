@@ -47,4 +47,4 @@ sudo apt install ./vk-turn-proxy-linux-v1.15.2-amd64.deb
 
 Общий код транспорта взят из проекта anton48. [Клиент для iOS](https://github.com/anton48/vk-turn-proxy-ios) · [Сервер](https://github.com/anton48/vk-turn-proxy)
 
-[GPL-3.0](LICENSE). Лицензии зависимостей входят в пакеты.
+[GPL-3.0](LICENSE). Лицензии и авторство сторонних компонентов указаны в [NOTICE.md](NOTICE.md).

@@ -47,4 +47,4 @@ Language, theme and autostart are in **Settings**. Choose **Exit** from the tray
 
 Shared transport code comes from anton48’s project. [iOS client](https://github.com/anton48/vk-turn-proxy-ios) · [Server](https://github.com/anton48/vk-turn-proxy)
 
-[GPL-3.0](LICENSE). Dependency license notices are included in the packages.
+[GPL-3.0](LICENSE). See [NOTICE.md](NOTICE.md) for third-party licenses and attribution.
