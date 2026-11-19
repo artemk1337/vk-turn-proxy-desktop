@@ -2,6 +2,8 @@
 
 # VK TURN Proxy Desktop
 
+This project was created for educational and research purposes.
+
 VPN client for Windows, Linux and macOS that sends WireGuard traffic through VK TURN relays.
 
 [![Interface demo](docs/images/interface-demo-en.gif)](https://artemk1337.github.io/vk-turn-proxy-desktop/?lang=en)
