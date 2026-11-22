@@ -15,7 +15,7 @@ import (
 
 // PowerShell receives encoded scripts so interface names remain data.
 func powershell(script string) []string {
-		// Module autoload progress is serialized as CLIXML even in noninteractive
+	// Module autoload progress is serialized as CLIXML even in noninteractive
 	// sessions. Suppress it before any command so JSON output stays parseable.
 	units := utf16.Encode([]rune("$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; [Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); " + script))
 	b := make([]byte, len(units)*2)
@@ -157,6 +157,5 @@ func parseWindowsDefaultRouteDetail(out string) (gateway, error) {
 }
 
 func windowsDefaultRouteCommand() []string {
-	// First-use module progress is serialized as CLIXML and would corrupt the JSON.
-	return powershell("$ProgressPreference='SilentlyContinue'; Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' -PolicyStore ActiveStore | Where-Object { $_.State -eq 'Alive' } | Sort-Object @{Expression={$_.RouteMetric + $_.InterfaceMetric}} | Select-Object -First 1 NextHop,InterfaceAlias | ConvertTo-Json -Compress")
+	return powershell("Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' -PolicyStore ActiveStore | Where-Object { $_.State -eq 'Alive' } | Sort-Object @{Expression={$_.RouteMetric + $_.InterfaceMetric}} | Select-Object -First 1 NextHop,InterfaceAlias | ConvertTo-Json -Compress")
 }
