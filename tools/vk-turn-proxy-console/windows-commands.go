@@ -15,7 +15,9 @@ import (
 
 // PowerShell receives encoded scripts so interface names remain data.
 func powershell(script string) []string {
-	units := utf16.Encode([]rune("$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); " + script))
+		// Module autoload progress is serialized as CLIXML even in noninteractive
+	// sessions. Suppress it before any command so JSON output stays parseable.
+	units := utf16.Encode([]rune("$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; [Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); " + script))
 	b := make([]byte, len(units)*2)
 	for i, unit := range units {
 		binary.LittleEndian.PutUint16(b[i*2:], unit)
