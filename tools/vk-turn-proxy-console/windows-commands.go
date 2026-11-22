@@ -15,9 +15,12 @@ import (
 
 // PowerShell receives encoded scripts so interface names remain data.
 func powershell(script string) []string {
-	// Module autoload progress is serialized as CLIXML even in noninteractive
-	// sessions. Suppress it before any command so JSON output stays parseable.
-	units := utf16.Encode([]rune("$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; [Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); " + script))
+	// Suppress module autoload progress so CLIXML cannot corrupt JSON output.
+	return encodePowerShell("$ProgressPreference='SilentlyContinue'; " + script)
+}
+
+func encodePowerShell(script string) []string {
+	units := utf16.Encode([]rune("$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); " + script))
 	b := make([]byte, len(units)*2)
 	for i, unit := range units {
 		binary.LittleEndian.PutUint16(b[i*2:], unit)
@@ -81,7 +84,7 @@ func windowsRouteUndo(s undoStep) []string {
 	if _, _, err := net.ParseCIDR(prefix); err != nil {
 		return s.Argv
 	}
-	legacy := powershell(fmt.Sprintf("Get-NetRoute -DestinationPrefix %s -PolicyStore ActiveStore -ErrorAction SilentlyContinue | Where-Object { $_.RouteMetric -eq %d } | Remove-NetRoute -Confirm:$false", psQuote(prefix), windowsRouteMetric))
+	legacy := encodePowerShell(fmt.Sprintf("Get-NetRoute -DestinationPrefix %s -PolicyStore ActiveStore -ErrorAction SilentlyContinue | Where-Object { $_.RouteMetric -eq %d } | Remove-NetRoute -Confirm:$false", psQuote(prefix), windowsRouteMetric))
 	if slices.Equal(s.Argv, legacy) {
 		return powershell(windowsRouteCleanup(prefix) + "; exit 0")
 	}

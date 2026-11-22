@@ -137,7 +137,7 @@ func TestWindowsRouteCleanupVerifiesRemoval(t *testing.T) {
 			t.Fatalf("missing %q in %s", want, script)
 		}
 	}
-	if strings.Contains(script, "SilentlyContinue") {
+	if strings.Contains(script, "-ErrorAction SilentlyContinue") {
 		t.Fatal("query failures must be reported")
 	}
 }
@@ -152,7 +152,7 @@ func TestWindowsLegacyRouteRecovery(t *testing.T) {
 		{"pin 203.0.113.2", "203.0.113.2/32"},
 	} {
 		t.Run(tc.key, func(t *testing.T) {
-			legacy := powershell(fmt.Sprintf("Get-NetRoute -DestinationPrefix %s -PolicyStore ActiveStore -ErrorAction SilentlyContinue | Where-Object { $_.RouteMetric -eq %d } | Remove-NetRoute -Confirm:$false", psQuote(tc.prefix), windowsRouteMetric))
+			legacy := encodePowerShell(fmt.Sprintf("Get-NetRoute -DestinationPrefix %s -PolicyStore ActiveStore -ErrorAction SilentlyContinue | Where-Object { $_.RouteMetric -eq %d } | Remove-NetRoute -Confirm:$false", psQuote(tc.prefix), windowsRouteMetric))
 			path := filepath.Join(t.TempDir(), "state.json")
 			j := newJournal(path)
 			if err := j.add(undoStep{Key: tc.key, Argv: legacy}); err != nil {
@@ -194,7 +194,7 @@ func TestWindowsUndoPreservesOtherCommands(t *testing.T) {
 func TestWindowsCleanupFailureKeepsLegacyJournal(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 	j := newJournal(path)
-	legacy := powershell("Get-NetRoute -DestinationPrefix '::/1' -PolicyStore ActiveStore -ErrorAction SilentlyContinue | Where-Object { $_.RouteMetric -eq 42757 } | Remove-NetRoute -Confirm:$false")
+	legacy := encodePowerShell("Get-NetRoute -DestinationPrefix '::/1' -PolicyStore ActiveStore -ErrorAction SilentlyContinue | Where-Object { $_.RouteMetric -eq 42757 } | Remove-NetRoute -Confirm:$false")
 	if err := j.add(undoStep{Key: "route ipv6 ::/1", Argv: legacy}); err != nil {
 		t.Fatal(err)
 	}

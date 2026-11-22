@@ -11,8 +11,8 @@ The desktop applications embed the same HTML/CSS/JavaScript frontend in a Wails 
 
 
 ```sh
-docker build --build-arg VERSION=v1.15.2 --build-arg RUN_TESTS=false --output dist/windows -f Dockerfile.windows .
-docker build --target packages --build-arg VERSION=v1.15.2 --build-arg RUN_TESTS=false --output dist/linux -f Dockerfile.linux .
+docker build --build-arg VERSION=v1.15.3 --build-arg RUN_TESTS=false --output dist/windows -f Dockerfile.windows .
+docker build --target packages --build-arg VERSION=v1.15.3 --build-arg RUN_TESTS=false --output dist/linux -f Dockerfile.linux .
 ```
 
 Produces Windows ZIPs/installers and Linux archives/DEB packages for x64 and ARM64, with checksums.
@@ -20,7 +20,7 @@ Produces Windows ZIPs/installers and Linux archives/DEB packages for x64 and ARM
 Build macOS packages on a Mac with Xcode Command Line Tools and the Apple SDK
 
 ```sh
-sh installer/macos/package.sh v1.15.2 dist/macos
+sh installer/macos/package.sh v1.15.3 dist/macos
 ```
 
 Produces ad-hoc signed application ZIPs for Intel and Apple Silicon with checksums.
