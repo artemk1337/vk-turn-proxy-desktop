@@ -1,6 +1,6 @@
 [Русский](README.md) · [English](README.en.md)
 
-# VK TURN Proxy Desktop - Widnows/Mac/Linuix
+# VK TURN Proxy Desktop - Widnows/Mac/Linux
 
 Проект создан в образовательных и исследовательских целях.
 
